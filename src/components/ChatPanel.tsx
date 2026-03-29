@@ -80,6 +80,10 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [trustDelayPassed, setTrustDelayPassed] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setError(null);
+  }, [sandboxId]);
   const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]); // Default to GPT-5.2 as per screenshot
   const [agentMode, setAgentMode] = useState(AGENT_MODES[0]); // Default to Agent
 
@@ -97,11 +101,19 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
     }
   }, [sandboxId]);
 
-  const { messages, input, handleSubmit, handleInputChange, isLoading, sendMessage, setInput } = useAgent({
+  const { messages, input, handleSubmit, handleInputChange, isLoading, sendMessage, setInput, error: agentError } = useAgent({
     agent: currentAgent,
     sandbox: sandbox,
     initialMessages: savedMessages,
   });
+
+  // Sync agentError to local error state if it exists
+  useEffect(() => {
+    if (agentError) {
+      console.error("useAgent streaming error:", agentError);
+      setError(agentError.message || "An unexpected error occurred during generation.");
+    }
+  }, [agentError]);
 
   // Save chat history to localStorage
   useEffect(() => {
@@ -139,10 +151,19 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
 
   // Handle initial prompt
   useEffect(() => {
-    if (initialPrompt && sandboxId && !initialPromptProcessed.current) {
-      initialPromptProcessed.current = true;
-      sendMessage(initialPrompt);
-    }
+    const sendInitialPrompt = async () => {
+      if (initialPrompt && sandboxId && !initialPromptProcessed.current) {
+        initialPromptProcessed.current = true;
+        setError(null);
+        try {
+          await sendMessage(initialPrompt);
+        } catch (err: any) {
+          console.error('Agent error:', err);
+          setError(err.message || 'Failed to send message');
+        }
+      }
+    };
+    sendInitialPrompt();
   }, [initialPrompt, sandboxId]);
 
   // Initial entrance animation for the centered form
@@ -264,7 +285,18 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
   const onFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sandbox || !input.trim()) return;
-    await sendMessage(input);
+    setError(null);
+    try {
+      await sendMessage(input);
+    } catch (err: any) {
+      console.error('Agent error:', err);
+      setError(err.message || 'Failed to send message');
+    }
+  };
+
+  const handleInputChangeWithErrorClear = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setError(null);
+    handleInputChange(e);
   };
 
   const handleSuggestedPrompt = (prompt: string) => {
@@ -411,10 +443,18 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
 
         {/* Chat Input */}
         <div className="p-3 border-t border-border bg-background shrink-0">
+          {error && (
+            <div className="mb-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive text-sm">
+              <div className="font-medium">Error: {error}</div>
+              <div className="text-xs mt-1 text-destructive/70">
+                Please check your Blink credits and try again.
+              </div>
+            </div>
+          )}
           <form onSubmit={onFormSubmit} className="relative group bg-[#18181b] rounded-xl border border-border/40 focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/40 transition-all shadow-sm">
             <textarea
               value={input}
-              onChange={handleInputChange}
+              onChange={handleInputChangeWithErrorClear}
               placeholder={isLoading ? "Agent is working..." : !sandboxId ? "Initializing sandbox..." : "Ask Cursor to build..."}
               className="w-full bg-transparent px-4 py-3 pr-10 text-[13px] leading-relaxed focus:outline-none min-h-[80px] max-h-[200px] resize-none placeholder:text-muted-foreground/50 font-normal"
               onKeyDown={(e) => {
@@ -571,7 +611,7 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
             <form onSubmit={onFormSubmit} className="relative group bg-[#18181b] rounded-xl border border-border/40 shadow-2xl">
               <textarea
                 value={input}
-                onChange={handleInputChange}
+                onChange={handleInputChangeWithErrorClear}
                 placeholder="Ask Cursor to build..."
                 className="relative w-full bg-transparent px-4 py-4 pr-14 text-[13px] leading-relaxed focus:outline-none min-h-[140px] max-h-[300px] resize-none placeholder:text-muted-foreground/50 font-normal rounded-xl"
                 onKeyDown={(e) => {
@@ -748,10 +788,18 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
 
         {/* Chat Input */}
         <div className="p-3 border-t border-border bg-background shrink-0">
+          {error && (
+            <div className="mb-3 p-3 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive text-sm">
+              <div className="font-medium">Error: {error}</div>
+              <div className="text-xs mt-1 text-destructive/70">
+                Please check your Blink credits and try again.
+              </div>
+            </div>
+          )}
           <form onSubmit={onFormSubmit} className="relative group bg-[#18181b] rounded-xl border border-border/40 focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/40 transition-all shadow-sm">
             <textarea
               value={input}
-              onChange={handleInputChange}
+              onChange={handleInputChangeWithErrorClear}
               placeholder={isLoading ? "Agent is working..." : !sandboxId ? "Initializing sandbox..." : "Ask Cursor to build..."}
               className="w-full bg-transparent px-4 py-3 pr-10 text-[13px] leading-relaxed focus:outline-none min-h-[100px] max-h-[300px] resize-none placeholder:text-muted-foreground/50 font-normal"
               onKeyDown={(e) => {

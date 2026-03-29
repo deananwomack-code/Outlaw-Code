@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BlinkProvider, BlinkAuthProvider } from '@blinkdotnew/react';
+import { BlinkProvider } from '@blinkdotnew/react';
 import App from './App';
 import './index.css';
 
@@ -9,11 +9,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BlinkProvider 
       projectId={import.meta.env.VITE_BLINK_PROJECT_ID} 
       publishableKey={import.meta.env.VITE_BLINK_PUBLISHABLE_KEY}
-      auth={{ mode: 'headless' }}
     >
-      <BlinkAuthProvider>
-        <App />
-      </BlinkAuthProvider>
+      <App />
     </BlinkProvider>
   </React.StrictMode>,
 );

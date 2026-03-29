@@ -18,9 +18,10 @@ interface HistoryModalProps {
   onClose: () => void;
   onSelectProject: (project: Project) => void;
   currentSandboxId?: string;
+  userName: string | null;
 }
 
-export function HistoryModal({ isOpen, onClose, onSelectProject, currentSandboxId }: HistoryModalProps) {
+export function HistoryModal({ isOpen, onClose, onSelectProject, currentSandboxId, userName }: HistoryModalProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -33,12 +34,10 @@ export function HistoryModal({ isOpen, onClose, onSelectProject, currentSandboxI
   const loadProjects = async () => {
     setIsLoading(true);
     try {
-      // Use raw list instead of table helper to be safe, or just use the SDK correctly
-      const user = await blink.auth.me();
-      if (!user) return;
+      if (!userName) return;
       
       const data = await blink.db.table<Project>('projects').list({
-        where: { userId: user.id },
+        where: { userId: userName },
         orderBy: { createdAt: 'desc' },
         limit: 50
       });
