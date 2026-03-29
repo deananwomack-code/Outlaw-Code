@@ -145,13 +145,38 @@ export default function App() {
     const createProjectRecord = async () => {
       if (shouldCreateProject && sandbox?.id && initialPrompt && isAuthenticated && userName) {
         try {
-          await (blink.db as any).projects.create({
+          const newProject = {
+            id: crypto.randomUUID(),
             userId: userName, // Using simple name instead of full user id
             name: initialPrompt.slice(0, 30) + (initialPrompt.length > 30 ? '...' : ''),
             prompt: initialPrompt,
             sandboxId: sandbox.id,
             createdAt: new Date().toISOString()
-          });
+          };
+
+          // Save to LocalStorage
+          try {
+            const storedProjects = localStorage.getItem('cursor_projects');
+            const projects = storedProjects ? JSON.parse(storedProjects) : [];
+            projects.push(newProject);
+            localStorage.setItem('cursor_projects', JSON.stringify(projects));
+          } catch (localErr) {
+            console.error('Failed to save to local storage', localErr);
+          }
+
+          // Also attempt to save to DB
+          try {
+            await (blink.db as any).projects.create({
+              userId: newProject.userId,
+              name: newProject.name,
+              prompt: newProject.prompt,
+              sandboxId: newProject.sandboxId,
+              createdAt: newProject.createdAt
+            });
+          } catch (dbErr) {
+            console.warn('DB save failed, but saved locally', dbErr);
+          }
+
           setShouldCreateProject(false); // Mark as done
         } catch (err) {
           console.error('Failed to save project history', err);

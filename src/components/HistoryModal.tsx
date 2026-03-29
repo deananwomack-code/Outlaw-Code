@@ -36,12 +36,45 @@ export function HistoryModal({ isOpen, onClose, onSelectProject, currentSandboxI
     try {
       if (!userName) return;
       
-      const data = await blink.db.table<Project>('projects').list({
-        where: { userId: userName },
-        orderBy: { createdAt: 'desc' },
-        limit: 50
+      // Load from local storage
+      const storedProjectsRaw = localStorage.getItem('cursor_projects');
+      let localProjects: Project[] = [];
+      if (storedProjectsRaw) {
+        try {
+          const parsed = JSON.parse(storedProjectsRaw);
+          localProjects = parsed.filter((p: any) => p.userId === userName);
+        } catch (e) {
+          console.error('Failed to parse local projects:', e);
+        }
+      }
+
+      // Try to load from DB
+      let dbProjects: Project[] = [];
+      try {
+        const data = await blink.db.table<Project>('projects').list({
+          where: { userId: userName },
+          orderBy: { createdAt: 'desc' },
+          limit: 50
+        });
+        dbProjects = data as Project[];
+      } catch (dbError) {
+        console.warn('Could not fetch from DB, relying on local storage', dbError);
+      }
+
+      // Merge avoiding duplicates by sandboxId
+      const projectMap = new Map<string, Project>();
+      dbProjects.forEach(p => projectMap.set(p.sandboxId, p));
+      localProjects.forEach(p => {
+        if (!projectMap.has(p.sandboxId)) {
+          projectMap.set(p.sandboxId, p);
+        }
       });
-      setProjects(data as Project[]);
+
+      const merged = Array.from(projectMap.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      setProjects(merged);
     } catch (error) {
       console.error('Failed to load history:', error);
     } finally {
