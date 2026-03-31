@@ -54,6 +54,19 @@ export function EditorLayout({ sandbox, initialPrompt }: EditorLayoutProps) {
   // Stable ref to file content for save operations
   const fileContentRef = useRef<string | null>(null);
   fileContentRef.current = fileContent;
+  // Stable ref to dirty flag so timer callbacks always read the latest value
+  const hasUnsavedChangesRef = useRef(false);
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
+
+  // When switching sandboxes, clear file selection and editor state
+  useEffect(() => {
+    setSelectedFile(null);
+    setFileContent(null);
+    setHasUnsavedChanges(false);
+    setIsLoadingFile(false);
+    selectedFileRef.current = null;
+    fileContentRef.current = null;
+  }, [sandbox?.id]);
 
   const handleBuildStatusChange = (building: boolean) => {
     setIsBuilding(building);
@@ -97,9 +110,9 @@ export function EditorLayout({ sandbox, initialPrompt }: EditorLayoutProps) {
       const timer = setTimeout(() => {
         refreshPreview();
         setIsWaitingForReload(false);
-        // Refresh open file content so the editor stays in sync after a build
-        // but only if user has no unsaved edits to avoid silent data loss
-        if (selectedFileRef.current && !hasUnsavedChanges) {
+        // Refresh open file content so the editor stays in sync after a build,
+        // but only if user has no unsaved edits to avoid silent data loss.
+        if (selectedFileRef.current && !hasUnsavedChangesRef.current) {
           loadFileContent(selectedFileRef.current);
         }
       }, 2500);
