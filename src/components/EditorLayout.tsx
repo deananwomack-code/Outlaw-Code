@@ -98,7 +98,8 @@ export function EditorLayout({ sandbox, initialPrompt }: EditorLayoutProps) {
         refreshPreview();
         setIsWaitingForReload(false);
         // Refresh open file content so the editor stays in sync after a build
-        if (selectedFileRef.current) {
+        // but only if user has no unsaved edits to avoid silent data loss
+        if (selectedFileRef.current && !hasUnsavedChanges) {
           loadFileContent(selectedFileRef.current);
         }
       }, 2500);
