@@ -68,15 +68,25 @@ export function EditorLayout({ sandbox, initialPrompt }: EditorLayoutProps) {
     const sb = sandboxRef.current;
     if (!sb) return;
     setIsLoadingFile(true);
-    setHasUnsavedChanges(false);
     try {
       const { stdout } = await sb.commands.run(`cat ${shellEscape(path)}`);
-      setFileContent(stdout ?? '');
+      // Only apply the result if this path is still the selected file.
+      if (selectedFileRef.current === path) {
+        setFileContent(stdout ?? '');
+        setHasUnsavedChanges(false);
+      }
     } catch (err) {
       console.error('Failed to read file:', err);
-      setFileContent('// Failed to read file');
+      // Only show the error placeholder if this path is still selected.
+      if (selectedFileRef.current === path) {
+        setFileContent('// Failed to read file');
+        setHasUnsavedChanges(false);
+      }
     } finally {
-      setIsLoadingFile(false);
+      // Avoid clearing the loading state for a newer in-flight request.
+      if (selectedFileRef.current === path) {
+        setIsLoadingFile(false);
+      }
     }
   }, []);
 
