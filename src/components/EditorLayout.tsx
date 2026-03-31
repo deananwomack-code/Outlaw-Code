@@ -123,7 +123,7 @@ export function EditorLayout({ sandbox, initialPrompt }: EditorLayoutProps) {
     if (!sb || !path || content === null) return;
     setIsSaving(true);
     try {
-      // Use printf to avoid issues with special characters in content
+      // Persist the current file contents using the sandbox filesystem API
       await sb.files.write(path, content);
       setHasUnsavedChanges(false);
     } catch (err) {
