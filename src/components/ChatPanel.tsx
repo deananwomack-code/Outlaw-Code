@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
-import { useAgent } from '@blinkdotnew/react';
+import { useAgent, useBlinkAuth } from '@blinkdotnew/react';
+import { blink } from '../lib/blink';
 import { codingAgent, askAgent } from '../lib/agent';
 import { 
   Send, Bot, User, Wrench, Loader2, ChevronRight, ChevronDown, 
@@ -76,6 +77,7 @@ const SUGGESTED_PROMPTS = [
 
 export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, onBuildStatusChange }: ChatPanelProps) {
   const sandboxId = sandbox?.id || null;
+  const { isAuthenticated: blinkAuthed, isLoading: blinkAuthLoading } = useBlinkAuth();
   const [previewKey, setPreviewKey] = useState(0);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [trustDelayPassed, setTrustDelayPassed] = useState(false);
@@ -153,6 +155,12 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
   useEffect(() => {
     const sendInitialPrompt = async () => {
       if (initialPrompt && sandboxId && !initialPromptProcessed.current) {
+        // Wait until blink auth has resolved
+        if (blinkAuthLoading) return;
+        if (!blinkAuthed) {
+          blink.auth.login(window.location.href);
+          return;
+        }
         initialPromptProcessed.current = true;
         setError(null);
         try {
@@ -164,7 +172,7 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
       }
     };
     sendInitialPrompt();
-  }, [initialPrompt, sandboxId]);
+  }, [initialPrompt, sandboxId, blinkAuthed, blinkAuthLoading]);
 
   // Initial entrance animation for the centered form
   useEffect(() => {
@@ -286,6 +294,14 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
     e.preventDefault();
     if (!sandbox || !input.trim()) return;
     setError(null);
+
+    // Blink auth is required for agent calls — trigger managed login if not signed in
+    if (blinkAuthLoading) return;
+    if (!blinkAuthed) {
+      blink.auth.login(window.location.href);
+      return;
+    }
+
     try {
       await sendMessage(input);
     } catch (err: any) {
@@ -455,7 +471,7 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
             <textarea
               value={input}
               onChange={handleInputChangeWithErrorClear}
-              placeholder={isLoading ? "Agent is working..." : !sandboxId ? "Initializing sandbox..." : "Ask Cursor to build..."}
+              placeholder={isLoading ? "Agent is working..." : !sandboxId ? "Initializing sandbox..." : !blinkAuthed ? "Click Send to sign in and start..." : "Ask to build..."}
               className="w-full bg-transparent px-4 py-3 pr-10 text-[13px] leading-relaxed focus:outline-none min-h-[80px] max-h-[200px] resize-none placeholder:text-muted-foreground/50 font-normal"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
