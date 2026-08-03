@@ -1,4 +1,4 @@
-import { Agent, sandboxTools, webSearch } from '@blinkdotnew/sdk'
+import { Agent, sandboxTools, webSearch } from 'openai'
 
 // Filter sandbox tools for read-only access
 const readOnlyTools = sandboxTools.filter(tool =>
