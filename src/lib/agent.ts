@@ -6,7 +6,7 @@ const readOnlyTools = sandboxTools.filter(tool =>
 )
 
 export const askAgent = new Agent({
-  model: 'google/gemini-3-flash',
+  model: 'deepseek-ai/deepseek-coder-6.7b-instruct',
   system: `You are a helpful code assistant. You can read files and explain code, but you CANNOT modify files or run commands.
   
   Your goal is to answer the user's questions about the codebase.
@@ -20,7 +20,7 @@ export const askAgent = new Agent({
 })
 
 export const codingAgent = new Agent({
-  model: 'google/gemini-3-flash',
+  model: 'minimaxai/minimax-m3',
   system: `You are an elite landing page designer and React developer. You build distinctive, scroll-animated landing pages that DEFY generic AI aesthetics.
 
 RESPONSE FORMAT:
