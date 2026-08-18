@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { blink } from '../lib/blink';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { ScrollArea } from './ui/scroll-area';
 import { Clock, Code, Box, ChevronRight, Terminal } from 'lucide-react';
@@ -35,8 +34,8 @@ export function HistoryModal({ isOpen, onClose, onSelectProject, currentSandboxI
     setIsLoading(true);
     try {
       if (!userName) return;
-      
-      // Load from local storage
+
+      // Load from local storage. (Blink DB was removed; wire a backend here when needed.)
       const storedProjectsRaw = localStorage.getItem('cursor_projects');
       let localProjects: Project[] = [];
       if (storedProjectsRaw) {
@@ -48,29 +47,7 @@ export function HistoryModal({ isOpen, onClose, onSelectProject, currentSandboxI
         }
       }
 
-      // Try to load from DB
-      let dbProjects: Project[] = [];
-      try {
-        const data = await blink.db.table<Project>('projects').list({
-          where: { userId: userName },
-          orderBy: { createdAt: 'desc' },
-          limit: 50
-        });
-        dbProjects = data as Project[];
-      } catch (dbError) {
-        console.warn('Could not fetch from DB, relying on local storage', dbError);
-      }
-
-      // Merge avoiding duplicates by sandboxId
-      const projectMap = new Map<string, Project>();
-      dbProjects.forEach(p => projectMap.set(p.sandboxId, p));
-      localProjects.forEach(p => {
-        if (!projectMap.has(p.sandboxId)) {
-          projectMap.set(p.sandboxId, p);
-        }
-      });
-
-      const merged = Array.from(projectMap.values()).sort(
+      const merged = localProjects.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 

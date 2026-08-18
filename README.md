@@ -1,59 +1,38 @@
-# Enhanced Vite React TypeScript Template
+# Outlaw-code (my-code-studio)
 
-This template includes built-in detection for missing CSS variables between your Tailwind config and CSS files.
+A Cursor-style in-browser code editor: file explorer + Monaco editor + AI chat + preview panel.
 
-## Features
+## What changed (Blink → OpenAI-compatible API)
 
-- **CSS Variable Detection**: Automatically detects if CSS variables referenced in `tailwind.config.cjs` are defined in `src/index.css`
-- **Enhanced Linting**: Includes ESLint, Stylelint, and custom CSS variable validation
-- **Shadcn/ui**: Pre-configured with all Shadcn components
-- **Modern Stack**: Vite + React + TypeScript + Tailwind CSS
+This app previously ran on the [Blink](https://blink.new) platform — hosted auth, a hosted AI agent runtime (`useAgent` / `Agent` with sandbox tools), and live cloud sandboxes. Blink has been **fully removed**. The AI chat is now backed by the official `openai` SDK pointed at any **OpenAI-compatible endpoint** (OpenAI, OpenRouter, Together AI, local LLMs, …).
 
-## Available Scripts
+### AI configuration
+
+Settings resolve with this priority (highest first):
+
+1. In-app **Settings** modal (stored in `localStorage`)
+2. Vite env vars (`.env.local`)
+3. Built-in defaults
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_OPENAI_API_KEY` | _(empty)_ | API key for your provider |
+| `VITE_OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible base URL |
+| `VITE_OPENAI_MODEL` | `gpt-4o-mini` | Default model id |
+
+Copy `.env.example` to `.env.local` and fill in your values, or set them at runtime via the **AI Settings** button (top-right of the prompt screen and the editor header).
+
+> ⚠️ In a static frontend build, the API key is exposed to the browser. This is intentional for local/personal use. For production, proxy requests through your own backend.
+
+### Sandbox / preview (stub)
+
+The sandbox, live preview, and file-explorer-against-remote-FS features relied on Blink's hosted cloud sandboxes, which no longer exist. `src/lib/sandbox.ts` now provides a minimal in-browser **stub** so the editor UI keeps working end-to-end. Wire `createSandbox` / `connectSandbox` / `getPreviewUrl` to your own sandbox or preview backend when ready.
+
+## Development
 
 ```bash
-# Run all linting (includes CSS variable check)
-npm run lint
-
-# Check only CSS variables
-npm run check:css-vars
-
-# Individual linting
-npm run lint:js    # ESLint
-npm run lint:css   # Stylelint
+npm install --legacy-peer-deps   # openai v5 has an optional peer on zod v3; project uses zod v4
+npm run dev                       # start Vite dev server (port 3000)
+npx tsc --noEmit                  # typecheck
+npx vite build                    # production build
 ```
-
-## CSS Variable Detection
-
-The template includes a custom script that:
-
-1. **Parses `tailwind.config.cjs`** to find all `var(--variable)` references
-2. **Parses `src/index.css`** to find all defined CSS variables (`--variable:`)
-3. **Cross-references** them to find missing definitions
-4. **Reports undefined variables** with clear error messages
-
-### Example Output
-
-When CSS variables are missing:
-```
-❌ Undefined CSS variables found in tailwind.config.cjs:
-   --sidebar-background
-   --sidebar-foreground
-   --sidebar-primary
-
-Add these variables to src/index.css
-```
-
-When all variables are defined:
-```
-✅ All CSS variables in tailwind.config.cjs are defined
-```
-
-## How It Works
-
-The detection happens during the `npm run lint` command, which will:
-- Exit with error code 1 if undefined variables are found
-- Show exactly which variables need to be added to your CSS file
-- Integrate seamlessly with your development workflow
-
-This prevents runtime CSS issues where Tailwind classes reference undefined CSS variables.
