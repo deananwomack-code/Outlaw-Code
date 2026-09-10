@@ -4,6 +4,7 @@ import {
   Eye, RefreshCw, ExternalLink, Infinity as InfinityIcon, Check,
   FolderOpen, Globe, Maximize2, AtSign, Image as ImageIcon, MessageSquareText,
   Rocket, Palette, Briefcase, PenTool, Video, Ticket, Settings as SettingsIcon,
+  FileCode, Copy, CheckCheck,
 } from 'lucide-react';
 import { getPreviewUrl } from '../lib/sandbox';
 import { cn } from '../lib/utils';
@@ -30,6 +31,9 @@ interface ChatPanelProps {
   isEmbedded?: boolean;
   initialPrompt?: string | null;
   onBuildStatusChange?: (isBuilding: boolean) => void;
+  activeFile?: string | null;
+  selectedCode?: string | null;
+  onApplyCode?: (code: string) => void;
 }
 
 const AI_MODELS = [
@@ -45,43 +49,36 @@ const AGENT_MODES = [
 
 const SUGGESTED_PROMPTS = [
   {
-    title: "AI Startup Landing Page",
-    prompt: "Build a sleek landing page for an AI startup that automates customer support. Use a dark theme with glass morphism, scroll-animated hero that pins while scrolling, and floating UI mockups. Cyan/teal accent colors.",
-    icon: Rocket
+    title: "Explain Architecture",
+    prompt: "Can you analyze this project structure and explain the key components, data flow, and architecture?",
+    icon: Bot,
   },
   {
-    title: "Personal Portfolio",
-    prompt: "Create a bold portfolio for a creative developer using kinetic typography - massive scrolling name in the hero, horizontal scroll project showcase, and neo-brutalist style with hard shadows and high contrast.",
-    icon: Palette
+    title: "Find Bugs & Issues",
+    prompt: "Review the active file for potential edge-case bugs, performance bottlenecks, or typing errors.",
+    icon: Wrench,
   },
   {
-    title: "Startup Pitch Page",
-    prompt: "Create an editorial-style pitch website for a seed-stage startup. Serif typography (Playfair Display), cream/paper background, animated stat counters on scroll, and elegant asymmetric layouts.",
-    icon: Briefcase
+    title: "Write Unit Tests",
+    prompt: "Write comprehensive unit tests for the functions or components in the active file.",
+    icon: Check,
   },
   {
-    title: "Design Agency Website",
-    prompt: "Build a striking agency website with horizontal scroll portfolio section, neo-brutalist design with thick borders and bold color blocking. Include a kinetic marquee of client logos.",
-    icon: PenTool
-  },
-  {
-    title: "AI Tool or Web App",
-    prompt: "Create a minimal web app UI for an AI writing tool. Vercel/Linear aesthetic with near-black sidebar, subtle hover states, and clean typography. Include a mock editor with floating toolbar.",
-    icon: Bot
-  },
-  {
-    title: "Creator / YouTuber Page",
-    prompt: "Build an energetic personal brand site for a content creator. Use kinetic typography hero with scroll-triggered video grid, bold gradients, and playful micro-interactions on hover.",
-    icon: Video
-  },
-  {
-    title: "Event or Conference Page",
-    prompt: "Create a dynamic conference landing page with pinned hero that reveals speaker cards on scroll, countdown timer animation, and a schedule section with staggered entrance animations. Dark theme with neon accent.",
-    icon: Ticket
+    title: "Refactor Component",
+    prompt: "Refactor this code to follow clean code standards, improve readability, and strengthen TypeScript types.",
+    icon: Rocket,
   },
 ];
 
-export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, onBuildStatusChange }: ChatPanelProps) {
+export function ChatPanel({
+  sandbox,
+  isEmbedded = false,
+  initialPrompt = null,
+  onBuildStatusChange,
+  activeFile = null,
+  selectedCode = null,
+  onApplyCode,
+}: ChatPanelProps) {
   const sandboxId = sandbox?.id || null;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -164,10 +161,14 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
     const controller = new AbortController();
     abortRef.current = controller;
 
+    const contextualPrompt = activeFile
+      ? `[Context: Active File: ${activeFile}${selectedCode ? `\nSelected Code:\n${selectedCode}` : ''}]\n\n${prompt}`
+      : prompt;
+
     try {
       await streamChatCompletion({
         messages: history,
-        prompt,
+        prompt: contextualPrompt,
         systemPrompt: agentMode.id === 'ask' ? ASK_AGENT_SYSTEM_PROMPT : CODING_AGENT_SYSTEM_PROMPT,
         signal: controller.signal,
         onDelta: (delta) => {
@@ -284,12 +285,12 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
   };
 
   const placeholder = isLoading
-    ? "Agent is working..."
+    ? "AI is working..."
     : !sandboxId
       ? "Initializing sandbox..."
       : !isConfigured(loadSettings())
         ? "Open Settings to add your API key..."
-        : "Ask to build...";
+        : "Ask Cursor / Copilot (Ctrl+L)...";
 
   const renderMessage = (m: ChatMessage, i: number) => (
     <div
@@ -305,7 +306,32 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
       {m.role !== 'user' && (
         <div className="text-foreground/90 text-[13px] px-1 max-w-full overflow-hidden">
           {m.content && (
-            <p className="whitespace-pre-wrap leading-relaxed mb-2">{m.content}</p>
+            <div>
+              <p className="whitespace-pre-wrap leading-relaxed mb-2">{m.content}</p>
+              <div className="flex items-center gap-2 mt-1 mb-2">
+                <button
+                  onClick={() => navigator.clipboard.writeText(m.content)}
+                  className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 bg-secondary/50 px-2 py-0.5 rounded border border-border/30 transition-colors"
+                  title="Copy message"
+                >
+                  <Copy size={10} />
+                  Copy
+                </button>
+                {onApplyCode && (
+                  <button
+                    onClick={() => {
+                      const codeMatch = m.content.match(/```(?:[a-z]*\n)?([\s\S]*?)```/);
+                      onApplyCode(codeMatch ? codeMatch[1].trim() : m.content);
+                    }}
+                    className="text-[10px] text-[#007acc] hover:text-[#38bdf8] flex items-center gap-1 bg-[#007acc]/10 px-2 py-0.5 rounded border border-[#007acc]/30 transition-colors"
+                    title="Insert or apply into active editor"
+                  >
+                    <FileCode size={10} />
+                    Insert in Editor
+                  </button>
+                )}
+              </div>
+            </div>
           )}
           {m.parts?.filter((p) => p.type === 'tool-invocation').map((part: any, idx: number) => {
             const toolId = `${m.id || i}-${idx}`;
@@ -349,6 +375,17 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
         </div>
       )}
       <form onSubmit={onFormSubmit} className="relative group bg-[#18181b] rounded-xl border border-border/40 focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/40 transition-all shadow-sm">
+        {activeFile && (
+          <div className="flex items-center gap-1.5 px-3 pt-2.5 text-[11px] text-zinc-400 border-b border-border/20 pb-1.5">
+            <FileCode size={12} className="text-[#007acc] shrink-0" />
+            <span className="truncate font-mono">{activeFile.split('/').pop()}</span>
+            {selectedCode && (
+              <span className="text-[10px] text-[#007acc] bg-[#007acc]/10 px-1.5 py-0.2 rounded font-sans shrink-0 ml-auto">
+                {selectedCode.split('\n').length} lines
+              </span>
+            )}
+          </div>
+        )}
         <textarea
           value={input}
           onChange={(e) => { setInput(e.target.value); setError(null); }}
@@ -470,9 +507,9 @@ export function ChatPanel({ sandbox, isEmbedded = false, initialPrompt = null, o
         <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mx-auto mb-4">
           <Bot size={24} className="text-primary" />
         </div>
-        <h3 className="text-sm font-medium text-foreground">AI Chat</h3>
+        <h3 className="text-sm font-medium text-foreground">AI Copilot</h3>
         <p className="text-xs text-muted-foreground/60 max-w-[240px] mx-auto">
-          Ask Cursor to build anything. Connect your OpenAI-compatible API key in Settings to get started.
+          Ask your copilot to architect, write, or debug code. Configure your AI model in Settings.
         </p>
       </div>
       <div className="w-full space-y-2">
