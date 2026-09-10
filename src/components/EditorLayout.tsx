@@ -1,22 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Eye, RefreshCw, ExternalLink, Code2, Save } from 'lucide-react';
-import { getPreviewUrl } from '../lib/sandbox';
+import {
+  Save, Sparkles, Terminal as TermIcon,
+  ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen,
+  PanelLeftClose, PanelLeftOpen, Search, RefreshCw,
+  GitBranch, Check, FolderOpen
+} from 'lucide-react';
 import { cn } from '../lib/utils';
-import { ChatPanel } from './ChatPanel';
+import { ActivityBar, type ActivityView } from './ActivityBar';
 import { FileExplorer } from './FileExplorer';
-import { LoadingAnimation } from './LoadingAnimation';
-import { BuildingScreen } from './BuildingScreen';
+import { EditorTabs, type TabItem } from './EditorTabs';
+import { InlineAIWidget } from './InlineAIWidget';
+import { BottomPanel, type BottomTab } from './BottomPanel';
+import { ChatPanel } from './ChatPanel';
 import { Button } from './ui/button';
 import Editor from '@monaco-editor/react';
 
 interface EditorLayoutProps {
   sandbox: any | null;
   initialPrompt?: string | null;
+  onOpenSettings?: () => void;
 }
-
-type CenterTab = 'code' | 'preview';
-
-const EXPLORER_WIDTH = 220;
 
 function getLanguage(path: string | null): string {
   if (!path) return 'plaintext';
@@ -29,235 +32,507 @@ function getLanguage(path: string | null): string {
   return map[ext || ''] || 'plaintext';
 }
 
-export function EditorLayout({ sandbox, initialPrompt }: EditorLayoutProps) {
-  const [previewKey, setPreviewKey] = useState(0);
-  const [isBuilding, setIsBuilding] = useState(false);
-  const [isWaitingForReload, setIsWaitingForReload] = useState(false);
+/** Safely escape a filesystem path for use in single-quoted shell arguments. */
+const shellEscape = (path: string) => `'${path.replace(/'/g, "'\\''")}'`;
 
-  // File explorer / code editor state
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<string | null>(null);
+export function EditorLayout({ sandbox, initialPrompt, onOpenSettings }: EditorLayoutProps) {
+  // Activity Bar & Sidebar State
+  const [activeActivityView, setActiveActivityView] = useState<ActivityView>('explorer');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+
+  // Search & Git panel states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ path: string; line: number; text: string }[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [gitStatusOutput, setGitStatusOutput] = useState<string>('');
+  const [isLoadingGit, setIsLoadingGit] = useState(false);
+
+  // Multi-Tab & File Buffers State
+  const [openTabs, setOpenTabs] = useState<TabItem[]>([]);
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+  const [fileBuffers, setFileBuffers] = useState<Record<string, string>>({});
+  const [originalFileBuffers, setOriginalFileBuffers] = useState<Record<string, string>>({});
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [activeTab, setActiveTab] = useState<CenterTab>('preview');
 
-  // Chat panel width (on the right)
-  const [chatWidth, setChatWidth] = useState(380);
-  const [isResizing, setIsResizing] = useState(false);
+  // Editor cursor / selection tracking
+  const [selectedText, setSelectedText] = useState('');
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+  const editorInstanceRef = useRef<any>(null);
 
-  const prevBuildingRef = useRef(false);
-  // Stable ref to sandbox so callbacks can always access the latest value
+  // Inline AI Widget (Ctrl+K)
+  const [inlineAIOpen, setInlineAIOpen] = useState(false);
+
+  // Bottom Panel (Terminal / Output / Preview)
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(true);
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(220);
+  const [activeBottomTab, setActiveBottomTab] = useState<BottomTab>('terminal');
+  const [isResizingBottom, setIsResizingBottom] = useState(false);
+  const [buildLogs, setBuildLogs] = useState<string[]>([]);
+
+  // AI Chat Panel (Right)
+  const [aiPanelOpen, setAiPanelOpen] = useState(true);
+  const [chatWidth, setChatWidth] = useState(360);
+  const [isResizingChat, setIsResizingChat] = useState(false);
+
+  // Stable references for async callbacks
   const sandboxRef = useRef<any>(null);
   sandboxRef.current = sandbox;
-  const selectedFileRef = useRef<string | null>(null);
-  // Stable ref to file content for save operations
-  const fileContentRef = useRef<string | null>(null);
-  fileContentRef.current = fileContent;
-  // Stable ref to dirty flag so timer callbacks always read the latest value
-  const hasUnsavedChangesRef = useRef(false);
-  hasUnsavedChangesRef.current = hasUnsavedChanges;
+  const activeFilePathRef = useRef<string | null>(null);
+  activeFilePathRef.current = activeFilePath;
+  const fileBuffersRef = useRef<Record<string, string>>({});
+  fileBuffersRef.current = fileBuffers;
 
-  // When switching sandboxes, clear file selection and editor state
+  // Clear workspace when switching sandboxes
   useEffect(() => {
-    setSelectedFile(null);
-    setFileContent(null);
-    setHasUnsavedChanges(false);
+    setOpenTabs([]);
+    setActiveFilePath(null);
+    setFileBuffers({});
+    setOriginalFileBuffers({});
     setIsLoadingFile(false);
-    selectedFileRef.current = null;
-    fileContentRef.current = null;
+    setSelectedText('');
   }, [sandbox?.id]);
 
-  const handleBuildStatusChange = (building: boolean) => {
-    setIsBuilding(building);
-  };
-
-  const refreshPreview = () => setPreviewKey(prev => prev + 1);
-
-  /** Safely escape a filesystem path for use in single-quoted shell arguments. */
-  const shellEscape = (path: string) => `'${path.replace(/'/g, "'\\''")}'`;
-
-  const loadFileContent = useCallback(async (path: string) => {
+  // Load a file from sandbox into tabs
+  const loadFile = useCallback(async (path: string) => {
     const sb = sandboxRef.current;
     if (!sb) return;
+
+    // If file is already open in buffers, just activate it
+    if (fileBuffersRef.current[path] !== undefined) {
+      setActiveFilePath(path);
+      return;
+    }
+
     setIsLoadingFile(true);
     try {
       const { stdout } = await sb.commands.run(`cat ${shellEscape(path)}`);
-      // Only apply the result if this path is still the selected file.
-      if (selectedFileRef.current === path) {
-        setFileContent(stdout ?? '');
-        setHasUnsavedChanges(false);
-      }
+      const content = stdout ?? '';
+      setFileBuffers((prev) => ({ ...prev, [path]: content }));
+      setOriginalFileBuffers((prev) => ({ ...prev, [path]: content }));
+      setOpenTabs((prev) => {
+        if (prev.some((t) => t.path === path)) return prev;
+        return [...prev, { path, isDirty: false }];
+      });
+      setActiveFilePath(path);
     } catch (err) {
       console.error('Failed to read file:', err);
-      // Only show the error placeholder if this path is still selected.
-      if (selectedFileRef.current === path) {
-        setFileContent('// Failed to read file');
-        setHasUnsavedChanges(false);
-      }
+      const fallback = '// Failed to read file content';
+      setFileBuffers((prev) => ({ ...prev, [path]: fallback }));
+      setOriginalFileBuffers((prev) => ({ ...prev, [path]: fallback }));
+      setOpenTabs((prev) => {
+        if (prev.some((t) => t.path === path)) return prev;
+        return [...prev, { path, isDirty: false }];
+      });
+      setActiveFilePath(path);
     } finally {
-      // Avoid clearing the loading state for a newer in-flight request.
-      if (selectedFileRef.current === path) {
-        setIsLoadingFile(false);
-      }
+      setIsLoadingFile(false);
     }
   }, []);
 
-  // Auto-reload preview when build finishes
+  // Auto-open primary file (App.tsx or index.html) when sandbox connects
   useEffect(() => {
-    if (prevBuildingRef.current && !isBuilding) {
-      setIsWaitingForReload(true);
-      const timer = setTimeout(() => {
-        refreshPreview();
-        setIsWaitingForReload(false);
-        // Refresh open file content so the editor stays in sync after a build,
-        // but only if user has no unsaved edits to avoid silent data loss.
-        if (selectedFileRef.current && !hasUnsavedChangesRef.current) {
-          loadFileContent(selectedFileRef.current);
+    if (sandbox && openTabs.length === 0) {
+      const tryOpenDefault = async () => {
+        try {
+          const { stdout } = await sandbox.commands.run('find /home/user/app/src -maxdepth 2 -name "App.tsx" -o -name "App.jsx" -o -name "main.tsx"');
+          const found = stdout?.trim().split('\n')[0];
+          if (found) {
+            loadFile(found);
+          } else {
+            // Fallback to find any file in app
+            const { stdout: anyFile } = await sandbox.commands.run('find /home/user/app -maxdepth 2 -type f -not -path "*/.*" -not -path "*/node_modules/*"');
+            const first = anyFile?.trim().split('\n')[0];
+            if (first) loadFile(first);
+          }
+        } catch (e) {
+          console.error("Could not find default file:", e);
         }
-      }, 2500);
-      return () => clearTimeout(timer);
+      };
+      tryOpenDefault();
     }
-    prevBuildingRef.current = isBuilding;
-  }, [isBuilding, loadFileContent]);
+  }, [sandbox, openTabs.length, loadFile]);
 
-  const handleFileSelect = useCallback(async (path: string) => {
-    selectedFileRef.current = path;
-    setSelectedFile(path);
-    setActiveTab('code');
-    await loadFileContent(path);
-  }, [loadFileContent]);
+  // Handle Tab Selection
+  const handleSelectTab = (path: string) => {
+    setActiveFilePath(path);
+  };
 
-  /** Write the current editor content back to the sandbox filesystem. */
-  const saveFile = useCallback(async () => {
+  // Handle Tab Close
+  const handleCloseTab = (path: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenTabs((prev) => {
+      const next = prev.filter((t) => t.path !== path);
+      if (activeFilePath === path) {
+        const nextActive = next.length > 0 ? next[next.length - 1].path : null;
+        setActiveFilePath(nextActive);
+      }
+      return next;
+    });
+  };
+
+  // Handle Editor Content Change
+  const handleEditorChange = (val: string | undefined) => {
+    if (!activeFilePath) return;
+    const newContent = val ?? '';
+    setFileBuffers((prev) => ({ ...prev, [activeFilePath]: newContent }));
+    const isDirty = newContent !== (originalFileBuffers[activeFilePath] ?? '');
+    setOpenTabs((prev) =>
+      prev.map((t) => (t.path === activeFilePath ? { ...t, isDirty } : t))
+    );
+  };
+
+  // Save current active file to sandbox
+  const saveActiveFile = useCallback(async () => {
     const sb = sandboxRef.current;
-    const path = selectedFileRef.current;
-    const content = fileContentRef.current;
-    if (!sb || !path || content === null) return;
+    const path = activeFilePathRef.current;
+    if (!sb || !path) return;
+    const content = fileBuffersRef.current[path];
+    if (content === undefined) return;
+
     setIsSaving(true);
     try {
-      // Persist the current file contents using the sandbox filesystem API
       await sb.files.write(path, content);
-      setHasUnsavedChanges(false);
+      setOriginalFileBuffers((prev) => ({ ...prev, [path]: content }));
+      setOpenTabs((prev) =>
+        prev.map((t) => (t.path === path ? { ...t, isDirty: false } : t))
+      );
+      setBuildLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Saved ${path}`]);
     } catch (err) {
       console.error('Failed to save file:', err);
+      setBuildLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Error saving ${path}: ${err}`]);
     } finally {
       setIsSaving(false);
     }
   }, []);
 
-  const openInNewTab = () => {
-    if (sandbox?.id) {
-      window.open(getPreviewUrl(sandbox.id), '_blank');
+  // Handle Code Replacement from Inline AI or Chat
+  const handleApplyCode = (replacement: string) => {
+    const editor = editorInstanceRef.current;
+    if (!editor || !activeFilePath) return;
+
+    const selection = editor.getSelection();
+    if (selection && !selection.isEmpty()) {
+      editor.executeEdits('ai-assistant', [{
+        range: selection,
+        text: replacement,
+        forceMoveMarkers: true,
+      }]);
+    } else {
+      // If no selection, replace or insert at cursor
+      const position = editor.getPosition();
+      if (position) {
+        editor.executeEdits('ai-assistant', [{
+          range: new (window as any).monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+          text: replacement,
+          forceMoveMarkers: true,
+        }]);
+      }
+    }
+    const updated = editor.getValue();
+    handleEditorChange(updated);
+  };
+
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S / Cmd+S: Save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveActiveFile();
+      }
+      // Ctrl+K: Inline AI
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setInlineAIOpen((prev) => !prev);
+      }
+      // Ctrl+` (backtick): Toggle bottom panel
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+        e.preventDefault();
+        setBottomPanelOpen((prev) => !prev);
+      }
+      // Ctrl+L: Toggle AI chat panel
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        setAiPanelOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [saveActiveFile]);
+
+  // Sidebar drag resizing
+  const startResizingSidebar = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingSidebar(true);
+  }, []);
+
+  // Chat drag resizing
+  const startResizingChat = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingChat(true);
+  }, []);
+
+  // Bottom panel drag resizing
+  const startResizingBottom = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingBottom(true);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isResizingSidebar) {
+        const newWidth = Math.max(160, Math.min(e.clientX - 48, 500));
+        setSidebarWidth(newWidth);
+      }
+      if (isResizingChat) {
+        const newWidth = Math.max(260, Math.min(window.innerWidth - e.clientX, 650));
+        setChatWidth(newWidth);
+      }
+      if (isResizingBottom) {
+        const newHeight = Math.max(120, Math.min(window.innerHeight - e.clientY - 24, 600));
+        setBottomPanelHeight(newHeight);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+      setIsResizingChat(false);
+      setIsResizingBottom(false);
+    };
+
+    if (isResizingSidebar || isResizingChat || isResizingBottom) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingSidebar, isResizingChat, isResizingBottom]);
+
+  // Handle Workspace Search
+  const handleRunSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim() || !sandbox) return;
+    setIsSearching(true);
+    try {
+      const { stdout } = await sandbox.commands.run(`grep -rnI --max-count=50 ${shellEscape(searchQuery)} /home/user/app/src`);
+      if (!stdout) {
+        setSearchResults([]);
+      } else {
+        const lines = stdout.trim().split('\n');
+        const parsed = lines.map((l: string) => {
+          const match = l.match(/^([^:]+):(\d+):(.*)$/);
+          if (match) {
+            return { path: match[1], line: parseInt(match[2]), text: match[3].trim() };
+          }
+          return { path: 'result', line: 1, text: l };
+        });
+        setSearchResults(parsed);
+      }
+    } catch (err) {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
     }
   };
 
-  // Chat panel resizing — drag the left edge of the chat panel
-  const startResizing = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
-
-  const stopResizing = useCallback(() => {
-    setIsResizing(false);
-  }, []);
-
-  const resize = useCallback((e: MouseEvent) => {
-    if (isResizing) {
-      const newWidth = window.innerWidth - e.clientX;
-      if (newWidth > 280 && newWidth < 700) {
-        setChatWidth(newWidth);
-      }
-    }
-  }, [isResizing]);
-
+  // Fetch Git status when git tab is opened
   useEffect(() => {
-    window.addEventListener('mousemove', resize);
-    window.addEventListener('mouseup', stopResizing);
-    return () => {
-      window.removeEventListener('mousemove', resize);
-      window.removeEventListener('mouseup', stopResizing);
-    };
-  }, [resize, stopResizing]);
+    if (activeActivityView === 'git' && sandbox) {
+      setIsLoadingGit(true);
+      sandbox.commands.run('git status --short').then((res: any) => {
+        setGitStatusOutput(res.stdout || 'Working tree clean.');
+      }).catch(() => {
+        setGitStatusOutput('Unable to inspect git status.');
+      }).finally(() => {
+        setIsLoadingGit(false);
+      });
+    }
+  }, [activeActivityView, sandbox]);
 
-  const fileName = selectedFile ? selectedFile.split('/').pop() : null;
+  const currentFileContent = activeFilePath ? fileBuffers[activeFilePath] ?? '' : '';
+  const currentTabItem = openTabs.find((t) => t.path === activeFilePath);
+  const isCurrentDirty = currentTabItem?.isDirty ?? false;
 
   return (
-    <div className={cn("relative h-full w-full bg-background overflow-hidden flex flex-row", isResizing && "select-none")}>
-
-      {/* FILE EXPLORER (Far Left) */}
-      <div className="h-full shrink-0" style={{ width: EXPLORER_WIDTH }}>
-        <FileExplorer
-          sandbox={sandbox}
-          onFileSelect={handleFileSelect}
-          selectedFile={selectedFile}
+    <div className="relative h-full w-full bg-[#18181b] overflow-hidden flex flex-col font-sans select-none">
+      {/* Main Workspace Body */}
+      <div className="flex-1 flex flex-row overflow-hidden relative">
+        {/* Activity Bar (Far Left Strip) */}
+        <ActivityBar
+          activeView={activeActivityView}
+          onSelectView={setActiveActivityView}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+          aiPanelOpen={aiPanelOpen}
+          onToggleAIPanel={() => setAiPanelOpen((prev) => !prev)}
+          onOpenSettings={onOpenSettings || (() => {})}
         />
-      </div>
 
-      {/* CENTER PANEL: Code Editor + Preview */}
-      <div className="flex-1 h-full flex flex-col min-w-0">
-        {/* Tab Bar */}
-        <div className="h-9 border-b border-border flex items-center bg-background shrink-0 px-2 gap-1">
-          <button
-            onClick={() => setActiveTab('code')}
-            className={cn(
-              "h-7 px-3 rounded text-[11px] font-medium flex items-center gap-1.5 transition-colors",
-              activeTab === 'code'
-                ? "bg-secondary text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            )}
+        {/* Primary Sidebar (Explorer / Search / Git) */}
+        {sidebarOpen && (
+          <div
+            style={{ width: sidebarWidth }}
+            className="h-full bg-[#1c1c1f] border-r border-border/40 flex flex-col relative shrink-0"
           >
-            <Code2 size={12} />
-            {fileName ?? 'Code'}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('preview')}
-            className={cn(
-              "h-7 px-3 rounded text-[11px] font-medium flex items-center gap-1.5 transition-colors",
-              activeTab === 'preview'
-                ? "bg-secondary text-foreground"
-                : "text-muted-foreground hover:text-foreground"
+            {/* Explorer View */}
+            {activeActivityView === 'explorer' && (
+              <FileExplorer
+                sandbox={sandbox}
+                selectedFile={activeFilePath}
+                onFileSelect={(path) => loadFile(path)}
+              />
             )}
-          >
-            <Eye size={12} />
-            Preview
-          </button>
 
-          <div className="ml-auto flex items-center gap-1">
-            {activeTab === 'code' && selectedFile && (
+            {/* Search View */}
+            {activeActivityView === 'search' && (
+              <div className="h-full flex flex-col text-xs text-foreground p-3 space-y-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Search in Workspace
+                </div>
+                <form onSubmit={handleRunSearch} className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search files..."
+                    className="flex-1 bg-[#18181b] border border-border/40 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#007acc]"
+                  />
+                  <Button type="submit" size="sm" className="h-7 px-2 bg-[#007acc] text-white">
+                    <Search size={12} />
+                  </Button>
+                </form>
+                <div className="flex-1 overflow-y-auto space-y-1 font-mono text-[11px]">
+                  {isSearching && <div className="text-muted-foreground">Searching...</div>}
+                  {!isSearching && searchResults.length === 0 && searchQuery && (
+                    <div className="text-muted-foreground">No matches found.</div>
+                  )}
+                  {searchResults.map((res, i) => (
+                    <div
+                      key={i}
+                      onClick={() => loadFile(res.path)}
+                      className="p-1.5 rounded hover:bg-zinc-800/60 cursor-pointer transition-colors border border-transparent hover:border-border/30"
+                    >
+                      <div className="text-[#007acc] font-medium truncate">{res.path.split('/').pop()}:{res.line}</div>
+                      <div className="text-zinc-400 truncate">{res.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Git View */}
+            {activeActivityView === 'git' && (
+              <div className="h-full flex flex-col text-xs text-foreground p-3 space-y-3 font-mono">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-sans flex items-center gap-1.5">
+                  <GitBranch size={13} className="text-[#007acc]" />
+                  Source Control
+                </div>
+                <div className="flex-1 overflow-y-auto bg-[#18181b] p-2.5 rounded border border-border/30 text-zinc-300 text-[11px] whitespace-pre-wrap">
+                  {isLoadingGit ? 'Checking git status...' : gitStatusOutput}
+                </div>
+              </div>
+            )}
+
+            {/* Sidebar Resizer Handle */}
+            <div
+              onMouseDown={startResizingSidebar}
+              className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-[#007acc] transition-colors z-20"
+            />
+          </div>
+        )}
+
+        {/* Center: Monaco Editor & Bottom Panel Group */}
+        <div className="flex-1 h-full flex flex-col min-w-0 bg-[#1e1e1e] relative">
+          {/* Editor Header Bar: Tabs + Quick Actions */}
+          <div className="h-9 bg-[#18181b] flex items-center justify-between shrink-0 pr-2">
+            <div className="flex-1 overflow-hidden">
+              <EditorTabs
+                tabs={openTabs}
+                activeTab={activeFilePath}
+                onSelectTab={handleSelectTab}
+                onCloseTab={handleCloseTab}
+              />
+            </div>
+
+            {/* Editor Action Buttons */}
+            <div className="flex items-center gap-1 shrink-0 ml-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-7 px-2 text-xs gap-1.5 transition-colors",
+                  isCurrentDirty ? "text-amber-400 hover:text-amber-300 font-medium" : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={saveActiveFile}
+                disabled={isSaving || !activeFilePath}
+                title="Save File (Ctrl+S)"
+              >
+                <Save size={12} className={cn(isSaving && "animate-pulse")} />
+                <span className="text-[11px]">{isCurrentDirty ? "Save *" : "Saved"}</span>
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1 text-[#007acc] hover:text-[#38bdf8] hover:bg-[#007acc]/10"
+                onClick={() => setInlineAIOpen((prev) => !prev)}
+                title="Inline AI Edit (Ctrl+K)"
+              >
+                <Sparkles size={12} />
+                <span className="text-[11px]">Edit (Ctrl+K)</span>
+              </Button>
+
+              <div className="w-[1px] h-4 bg-border/40 mx-0.5" />
+
               <Button
                 variant="ghost"
                 size="icon"
-                className={cn("h-6 w-6", hasUnsavedChanges ? "text-amber-400 hover:text-amber-300" : "text-muted-foreground")}
-                onClick={saveFile}
-                disabled={isSaving}
-                title={hasUnsavedChanges ? "Save file (unsaved changes)" : "Save file"}
+                className={cn("h-7 w-7 text-muted-foreground hover:text-foreground", bottomPanelOpen && "text-white")}
+                onClick={() => setBottomPanelOpen((prev) => !prev)}
+                title="Toggle Terminal / Bottom Panel (Ctrl+`)"
               >
-                <Save size={11} className={cn(isSaving && "animate-pulse")} />
+                <TermIcon size={13} />
               </Button>
-            )}
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openInNewTab} title="Open preview in new tab">
-              <ExternalLink size={11} />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={refreshPreview} title="Refresh preview">
-              <RefreshCw size={11} className={cn(isBuilding && "animate-spin")} />
-            </Button>
-          </div>
-        </div>
 
-        {/* Code Editor */}
-        {activeTab === 'code' && (
-          <div className="flex-1 overflow-hidden bg-[#1e1e1e]">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("h-7 w-7 text-muted-foreground hover:text-foreground", aiPanelOpen && "text-[#007acc]")}
+                onClick={() => setAiPanelOpen((prev) => !prev)}
+                title="Toggle AI Assistant (Ctrl+L)"
+              >
+                {aiPanelOpen ? <PanelRightClose size={13} /> : <PanelRightOpen size={13} />}
+              </Button>
+            </div>
+          </div>
+
+          {/* Monaco Editor Container */}
+          <div className="flex-1 overflow-hidden relative">
+            <InlineAIWidget
+              isOpen={inlineAIOpen}
+              onClose={() => setInlineAIOpen(false)}
+              filePath={activeFilePath}
+              selectedText={selectedText}
+              fullFileContent={currentFileContent}
+              onAccept={handleApplyCode}
+            />
+
             {isLoadingFile ? (
-              <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">
-                Loading...
+              <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">
+                Loading file...
               </div>
-            ) : selectedFile && fileContent !== null ? (
+            ) : activeFilePath ? (
               <Editor
                 height="100%"
-                language={getLanguage(selectedFile)}
-                value={fileContent}
+                language={getLanguage(activeFilePath)}
+                value={currentFileContent}
                 theme="vs-dark"
                 options={{
                   minimap: { enabled: true },
@@ -268,83 +543,115 @@ export function EditorLayout({ sandbox, initialPrompt }: EditorLayoutProps) {
                   automaticLayout: true,
                   tabSize: 2,
                   fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                  padding: { top: 8 },
                 }}
-                onChange={(value) => {
-                  setFileContent(value ?? '');
-                  setHasUnsavedChanges(true);
-                }}
+                onChange={handleEditorChange}
                 onMount={(editor, monaco) => {
-                  editor.addCommand(
-                    monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-                    () => saveFile()
-                  );
+                  editorInstanceRef.current = editor;
+
+                  // Track cursor position and selection
+                  editor.onDidChangeCursorPosition((e) => {
+                    setCursorPos({ line: e.position.lineNumber, col: e.position.column });
+                  });
+
+                  editor.onDidChangeCursorSelection((e) => {
+                    const sel = editor.getModel()?.getValueInRange(e.selection) || '';
+                    setSelectedText(sel);
+                  });
+
+                  // Bind Ctrl+S
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+                    saveActiveFile();
+                  });
+
+                  // Bind Ctrl+K
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {
+                    setInlineAIOpen(true);
+                  });
+
+                  // Bind Ctrl+L
+                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL, () => {
+                    setAiPanelOpen((prev) => !prev);
+                  });
                 }}
               />
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground/50 gap-3">
-                <Code2 size={32} className="opacity-30" />
-                <p className="text-sm">Select a file from the explorer to view its code</p>
+              <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground/40 gap-3">
+                <FolderOpen size={36} className="opacity-30" />
+                <p className="text-xs">Select a file from the explorer to begin editing</p>
               </div>
             )}
           </div>
-        )}
 
-        {/* Preview */}
-        {activeTab === 'preview' && (
-          <div className="flex-1 overflow-hidden relative bg-black">
-            {sandbox?.id ? (
-              <>
-                <iframe
-                  key={previewKey}
-                  src={getPreviewUrl(sandbox.id)}
-                  className="w-full h-full border-none"
-                  title="App Preview"
-                />
-                {(isBuilding || isWaitingForReload) && <BuildingScreen />}
-              </>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-card text-muted-foreground text-sm">
-                <div className="flex flex-col items-center gap-2 w-full h-full">
-                  <LoadingAnimation steps={[
-                    "Connecting to sandbox...",
-                    "Establishing secure channel...",
-                    "Verifying environment...",
-                    "Syncing file system...",
-                    "Preparing workspace..."
-                  ]} />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          {/* Resizer Handle for Bottom Panel */}
+          {bottomPanelOpen && (
+            <div
+              onMouseDown={startResizingBottom}
+              className="h-1 w-full bg-border/30 hover:bg-[#007acc] cursor-ns-resize transition-colors z-20 shrink-0"
+            />
+          )}
 
-      {/* CHAT PANEL (Right Side) */}
-      <div
-        className="h-full z-20 bg-background border-l border-border flex flex-col relative shrink-0"
-        style={{ width: chatWidth }}
-      >
-        {/* Resizer Handle (Left Edge of Chat) */}
-        <div
-          onMouseDown={startResizing}
-          className="absolute left-0 top-0 bottom-0 w-1 -ml-0.5 cursor-ew-resize hover:bg-primary/50 transition-colors z-30 group flex items-center justify-center"
-        >
-          <div className="w-[1px] h-8 bg-border group-hover:bg-primary transition-colors" />
+          {/* Bottom Panel (Terminal / Output / Preview) */}
+          <BottomPanel
+            isOpen={bottomPanelOpen}
+            onToggle={() => setBottomPanelOpen(false)}
+            height={bottomPanelHeight}
+            sandbox={sandbox}
+            buildLogs={buildLogs}
+            activeTab={activeBottomTab}
+            onSelectTab={setActiveBottomTab}
+          />
         </div>
 
-        <ChatPanel
-          key={sandbox?.id || 'no-sandbox'}
-          sandbox={sandbox}
-          isEmbedded={true}
-          initialPrompt={initialPrompt}
-          onBuildStatusChange={handleBuildStatusChange}
-        />
+        {/* AI Assistant Panel (Right) */}
+        {aiPanelOpen && (
+          <div
+            style={{ width: chatWidth }}
+            className="h-full bg-background border-l border-border/40 flex flex-col relative shrink-0"
+          >
+            {/* Chat Resizer Handle */}
+            <div
+              onMouseDown={startResizingChat}
+              className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-[#007acc] transition-colors z-20"
+            />
+
+            <ChatPanel
+              key={sandbox?.id || 'no-sandbox'}
+              sandbox={sandbox}
+              isEmbedded={true}
+              initialPrompt={initialPrompt}
+              activeFile={activeFilePath}
+              selectedCode={selectedText}
+              onApplyCode={handleApplyCode}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Resize Overlay - prevents iframe from stealing mouse events during resize */}
-      {isResizing && (
-        <div className="fixed inset-0 z-50 cursor-ew-resize bg-transparent" />
-      )}
+      {/* Status Bar (Very Bottom, 22px) */}
+      <footer className="h-6 bg-[#007acc] text-white flex items-center justify-between px-3 text-[11px] font-sans shrink-0 select-none z-30">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 hover:bg-black/10 px-1.5 py-0.5 rounded cursor-pointer">
+            <GitBranch size={11} />
+            <span>main*</span>
+          </div>
+          {activeFilePath && (
+            <span className="opacity-80 truncate max-w-[300px]">{activeFilePath}</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4">
+          <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
+          <span>UTF-8</span>
+          <span className="capitalize">{getLanguage(activeFilePath)}</span>
+          <button
+            onClick={() => setBottomPanelOpen((prev) => !prev)}
+            className="hover:bg-black/10 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+          >
+            {bottomPanelOpen ? "Hide Terminal" : "Show Terminal"}
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }
