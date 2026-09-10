@@ -1,14 +1,25 @@
 import { useEffect, useState, useRef } from 'react';
 import { createSandbox, connectSandbox } from './lib/sandbox';
 import { SimpleLogin } from './components/SimpleLogin';
-import { PromptScreen } from './components/PromptScreen';
 import { EditorLayout } from './components/EditorLayout';
 import { HistoryModal, Project } from './components/HistoryModal';
 import { SettingsModal } from './components/SettingsModal';
-import { PanelLeft, ChevronLeft, ChevronRight, Settings, History as HistoryIcon, Plus, LogOut } from 'lucide-react';
+import {
+  Settings,
+  History as HistoryIcon,
+  Plus,
+  LogOut,
+  FolderPlus,
+  Sparkles
+} from 'lucide-react';
 import { Button } from './components/ui/button';
-import gsap from 'gsap';
-import { cn } from './lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './components/ui/dropdown-menu';
 
 export default function App() {
   const [userName, setUserName] = useState<string | null>(
@@ -18,93 +29,31 @@ export default function App() {
   const [sandbox, setSandbox] = useState<any>(null);
   const [sandboxError, setSandboxError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-
-  // Initialize state based on URL params to prevent flash of prompt screen on reload
-  const hasUrlSandbox = typeof window !== 'undefined' && !!new URLSearchParams(window.location.search).get('sandboxId');
-
-  const [hasPromptStarted, setHasPromptStarted] = useState(hasUrlSandbox);
-  const [showEditor, setShowEditor] = useState(hasUrlSandbox);
-  const [initialPrompt, setInitialPrompt] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [shouldCreateProject, setShouldCreateProject] = useState(false);
+  const [projectName, setProjectName] = useState<string>('Workspace');
 
-  const promptScreenRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
-
-  const handleStartPrompt = async (prompt: string) => {
-    setInitialPrompt(prompt);
-    setHasPromptStarted(true);
-    setShouldCreateProject(true);
-
-    if (sandbox?.id) {
-      window.history.pushState({}, '', `?sandboxId=${sandbox.id}`);
-    }
-
-    // Transition animation
-    const tl = gsap.timeline({
-      onComplete: () => {
-        setShowEditor(true);
-      }
-    });
-
-    if (promptScreenRef.current) {
-      tl.to(promptScreenRef.current, {
-        opacity: 0,
-        scale: 0.95,
-        filter: "blur(10px)",
-        duration: 0.8,
-        ease: "power2.inOut"
-      });
-    }
-
-    if (editorRef.current) {
-      tl.fromTo(editorRef.current,
-        { opacity: 0, scale: 1.05, filter: "blur(10px)" },
-        { opacity: 1, scale: 1, filter: "blur(0px)", duration: 1.2, ease: "power3.out" },
-        "-=0.4"
-      );
-    }
-  };
-
+  // Handle Project Selection from History
   const handleSelectProject = async (project: Project) => {
     setShowHistory(false);
-    setShouldCreateProject(false);
-
-    // If selecting the same sandbox, do nothing
     if (sandbox?.id === project.sandboxId) return;
 
-    // Update URL
     window.history.pushState({}, '', `?sandboxId=${project.sandboxId}`);
+    setProjectName(project.name || 'Workspace');
 
     try {
-      // Connect to the existing sandbox
       const newSandbox = await connectSandbox(project.sandboxId);
       setSandbox(newSandbox);
-      setInitialPrompt(project.prompt);
-
-      // If we are on prompt screen, switch to editor
-      if (!showEditor) {
-        setHasPromptStarted(true);
-        setShowEditor(true);
-        if (promptScreenRef.current) promptScreenRef.current.style.display = 'none';
-        if (editorRef.current) {
-          editorRef.current.style.opacity = '1';
-          editorRef.current.style.visibility = 'visible';
-          editorRef.current.style.filter = 'blur(0px)';
-          editorRef.current.style.transform = 'scale(1)';
-        }
-      }
     } catch (err) {
       console.error("Failed to connect to sandbox", err);
       alert("Could not connect to this sandbox. It might have expired.");
     }
   };
 
+  // Initialize or connect sandbox on startup
   useEffect(() => {
     if (isAuthenticated && !sandbox) {
       const initSandbox = async () => {
         try {
-          // Check for sandboxId in URL
           const params = new URLSearchParams(window.location.search);
           const sandboxId = params.get('sandboxId');
 
@@ -112,19 +61,20 @@ export default function App() {
             try {
               const sb = await connectSandbox(sandboxId);
               setSandbox(sb);
-              setHasPromptStarted(true);
-              setShowEditor(true);
+              setProjectName(`Project (${sandboxId.slice(0, 6)})`);
               return;
             } catch (err) {
               console.error("Failed to restore sandbox", err);
               window.history.replaceState({}, '', '/');
-              setHasPromptStarted(false);
-              setShowEditor(false);
             }
           }
 
           const sb = await createSandbox();
           setSandbox(sb);
+          if (sb?.id) {
+            window.history.replaceState({}, '', `?sandboxId=${sb.id}`);
+            setProjectName(`Workspace (${sb.id.slice(0, 6)})`);
+          }
         } catch (err) {
           setSandboxError(err instanceof Error ? err.message : 'Failed to initialize sandbox');
         }
@@ -133,41 +83,7 @@ export default function App() {
     }
   }, [isAuthenticated, sandbox]);
 
-  // Handle project creation when sandbox and prompt are ready
-  useEffect(() => {
-    const createProjectRecord = async () => {
-      if (shouldCreateProject && sandbox?.id && initialPrompt && isAuthenticated && userName) {
-        try {
-          const newProject = {
-            id: crypto.randomUUID(),
-            userId: userName,
-            name: initialPrompt.slice(0, 30) + (initialPrompt.length > 30 ? '...' : ''),
-            prompt: initialPrompt,
-            sandboxId: sandbox.id,
-            createdAt: new Date().toISOString()
-          };
-
-          // Save to LocalStorage
-          try {
-            const storedProjects = localStorage.getItem('cursor_projects');
-            const projects = storedProjects ? JSON.parse(storedProjects) : [];
-            projects.push(newProject);
-            localStorage.setItem('cursor_projects', JSON.stringify(projects));
-          } catch (localErr) {
-            console.error('Failed to save to local storage', localErr);
-          }
-
-          setShouldCreateProject(false);
-        } catch (err) {
-          console.error('Failed to save project history', err);
-        }
-      }
-    };
-
-    createProjectRecord();
-  }, [shouldCreateProject, sandbox, initialPrompt, isAuthenticated, userName]);
-
-  const handleHome = () => {
+  const handleNewProject = () => {
     window.history.pushState({}, '', '/');
     window.location.reload();
   };
@@ -180,14 +96,19 @@ export default function App() {
   };
 
   if (!isAuthenticated) {
-    return <SimpleLogin onLogin={(name) => {
-      localStorage.setItem('cursor_user_name', name);
-      setUserName(name);
-    }} />;
+    return (
+      <SimpleLogin
+        onLogin={(name) => {
+          localStorage.setItem('cursor_user_name', name);
+          setUserName(name);
+        }}
+      />
+    );
   }
 
   return (
-    <div className="h-screen w-screen bg-background relative overflow-hidden">
+    <div className="h-screen w-screen bg-[#18181b] text-foreground flex flex-col overflow-hidden font-sans select-none">
+      {/* Settings Modal */}
       <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* History Modal */}
@@ -199,108 +120,165 @@ export default function App() {
         userName={userName}
       />
 
-      {/* Prompt Screen Layer */}
-      <div
-        ref={promptScreenRef}
-        className={cn(
-          "absolute inset-0 z-50 bg-background transition-colors duration-500",
-          hasPromptStarted && "pointer-events-none"
-        )}
-        style={{ display: showEditor ? 'none' : 'block' }}
-      >
-        <PromptScreen onStart={handleStartPrompt} />
+      {/* Top VS Code / Cursor Menubar (38px height) */}
+      <header className="h-9 border-b border-border/40 flex items-center justify-between px-3 bg-[#1e1e22] shrink-0 z-30">
+        {/* Left: Brand & Menus */}
+        <div className="flex items-center gap-2">
+          {/* Logo */}
+          <div className="flex items-center gap-1.5 pr-2 border-r border-border/30 cursor-pointer" onClick={handleNewProject}>
+            <svg fill="none" height="18" viewBox="0 0 545 545" width="18" xmlns="http://www.w3.org/2000/svg">
+              <g fill="#007acc">
+                <path d="m466.383 137.073-206.469-119.2034c-6.63-3.8287-14.811-3.8287-21.441 0l-206.4586 119.2034c-5.5734 3.218-9.0144 9.169-9.0144 15.615v240.375c0 6.436 3.441 12.397 9.0144 15.615l206.4686 119.203c6.63 3.829 14.811 3.829 21.441 0l206.468-119.203c5.574-3.218 9.015-9.17 9.015-15.615v-240.375c0-6.436-3.441-12.397-9.015-15.615zm-12.969 25.25-199.316 345.223c-1.347 2.326-4.904 1.376-4.904-1.319v-226.048c0-4.517-2.414-8.695-6.33-10.963l-195.7577-113.019c-2.3263-1.347-1.3764-4.905 1.3182-4.905h398.6305c5.661 0 9.199 6.136 6.368 11.041h-.009z"></path>
+              </g>
+            </svg>
+            <span className="text-[12px] font-semibold text-zinc-200">Outlaw Code</span>
+          </div>
 
-        <div className="absolute top-4 right-4 z-50 flex gap-2">
+          {/* Menus */}
+          <div className="flex items-center gap-0.5 text-[12px]">
+            {/* File Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="px-2 py-1 rounded text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors focus:outline-none">
+                  File
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="bg-[#202024] border-border/50 text-xs min-w-[170px]">
+                <DropdownMenuItem onClick={handleNewProject} className="gap-2 cursor-pointer focus:bg-zinc-800">
+                  <Plus size={13} />
+                  New Project
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowHistory(true)} className="gap-2 cursor-pointer focus:bg-zinc-800">
+                  <FolderPlus size={13} />
+                  Open Project History...
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border/30" />
+                <DropdownMenuItem onClick={handleLogout} className="gap-2 cursor-pointer text-red-400 focus:bg-zinc-800">
+                  <LogOut size={13} />
+                  Exit / Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* View Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="px-2 py-1 rounded text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors focus:outline-none">
+                  View
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="bg-[#202024] border-border/50 text-xs min-w-[170px]">
+                <DropdownMenuItem onClick={() => setShowHistory(true)} className="gap-2 cursor-pointer focus:bg-zinc-800">
+                  <HistoryIcon size={13} />
+                  Project History
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowSettings(true)} className="gap-2 cursor-pointer focus:bg-zinc-800">
+                  <Settings size={13} />
+                  AI Settings
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* AI Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="px-2 py-1 rounded text-[#007acc] hover:text-[#38bdf8] hover:bg-[#007acc]/10 transition-colors focus:outline-none">
+                  AI Copilot
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="bg-[#202024] border-border/50 text-xs min-w-[180px]">
+                <DropdownMenuItem onClick={() => setShowSettings(true)} className="gap-2 cursor-pointer focus:bg-zinc-800">
+                  <Sparkles size={13} />
+                  Configure AI Model...
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowSettings(true)} className="gap-2 cursor-pointer focus:bg-zinc-800">
+                  <Settings size={13} />
+                  API Settings
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Center: Window Title */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 pointer-events-none">
+          <span className="text-[11px] text-zinc-400 font-medium">
+            {projectName} — Outlaw Code
+          </span>
+        </div>
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground hover:text-foreground gap-2"
-            onClick={() => setShowSettings(true)}
+            className="h-7 text-zinc-400 hover:text-white hover:bg-zinc-800/50 gap-1.5 px-2"
+            onClick={handleNewProject}
+            title="New Project"
           >
-            <Settings size={16} />
-            AI Settings
+            <Plus size={13} />
+            <span className="text-[11px]">New</span>
           </Button>
+
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground hover:text-foreground gap-2"
+            className="h-7 text-zinc-400 hover:text-white hover:bg-zinc-800/50 gap-1.5 px-2"
             onClick={() => setShowHistory(true)}
+            title="Recent Projects"
           >
-            <HistoryIcon size={16} />
-            History
+            <HistoryIcon size={13} />
+            <span className="text-[11px]">History</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-zinc-400 hover:text-white hover:bg-zinc-800/50 gap-1.5 px-2"
+            onClick={() => setShowSettings(true)}
+            title="AI Settings"
+          >
+            <Settings size={13} />
+            <span className="text-[11px]">Settings</span>
+          </Button>
+
+          <div className="w-[1px] h-4 bg-border/40 mx-1" />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-zinc-400 hover:text-red-400 hover:bg-zinc-800/50 gap-1.5 px-2"
+            onClick={handleLogout}
+            title={`Logout (${userName})`}
+          >
+            <LogOut size={13} />
+            <span className="text-[11px]">{userName}</span>
           </Button>
         </div>
-      </div>
+      </header>
 
-      {/* Editor Layer */}
-      <div
-        ref={editorRef}
-        className={cn(
-          "h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden font-sans",
-          !hasPromptStarted ? "opacity-0 invisible" : "opacity-100 visible"
+      {/* Main IDE Workspace */}
+      <main className="flex-1 overflow-hidden relative">
+        {sandboxError ? (
+          <div className="h-full w-full flex flex-col items-center justify-center p-6 text-center text-red-400 space-y-3">
+            <p className="text-sm font-medium">Failed to connect to development sandbox:</p>
+            <p className="text-xs text-zinc-400 max-w-md">{sandboxError}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.location.reload()}
+              className="text-xs mt-2"
+            >
+              Retry Connection
+            </Button>
+          </div>
+        ) : (
+          <EditorLayout
+            sandbox={sandbox}
+            onOpenSettings={() => setShowSettings(true)}
+          />
         )}
-      >
-        {/* Header */}
-        <header className="h-10 border-b border-border flex items-center justify-between px-3 bg-background shrink-0 select-none">
-          <div className="flex items-center gap-2 px-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={handleHome}>
-            <svg fill="none" height="22" viewBox="0 0 545 545" width="22" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink"><g fill="currentColor"><path d="m466.383 137.073-206.469-119.2034c-6.63-3.8287-14.811-3.8287-21.441 0l-206.4586 119.2034c-5.5734 3.218-9.0144 9.169-9.0144 15.615v240.375c0 6.436 3.441 12.397 9.0144 15.615l206.4686 119.203c6.63 3.829 14.811 3.829 21.441 0l206.468-119.203c5.574-3.218 9.015-9.17 9.015-15.615v-240.375c0-6.436-3.441-12.397-9.015-15.615zm-12.969 25.25-199.316 345.223c-1.347 2.326-4.904 1.376-4.904-1.319v-226.048c0-4.517-2.414-8.695-6.33-10.963l-195.7577-113.019c-2.3263-1.347-1.3764-4.905 1.3182-4.905h398.6305c5.661 0 9.199 6.136 6.368 11.041h-.009z"></path></g></svg>
-          </div>
-
-          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-            <span className="text-[11px] font-medium text-muted-foreground">
-              Cursor
-            </span>
-          </div>
-
-          <div className="flex items-center gap-0.5 px-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-muted-foreground hover:text-foreground hover:bg-transparent gap-1.5 px-2 mr-1"
-              onClick={handleHome}
-            >
-              <Plus size={14} />
-              <span className="text-[11px]">New Chat</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-muted-foreground hover:text-foreground hover:bg-transparent gap-1.5 px-2 mr-1"
-              onClick={() => setShowHistory(true)}
-            >
-              <HistoryIcon size={14} />
-              <span className="text-[11px]">History</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-muted-foreground hover:text-foreground hover:bg-transparent gap-1.5 px-2 mr-1"
-              onClick={() => setShowSettings(true)}
-            >
-              <Settings size={14} />
-              <span className="text-[11px]">AI Settings</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-muted-foreground hover:text-foreground hover:bg-transparent gap-1.5 px-2 mr-1"
-              onClick={handleLogout}
-              title="Logout"
-            >
-              <LogOut size={14} />
-              <span className="text-[11px]">Logout</span>
-            </Button>
-          </div>
-        </header>
-
-        {/* Main Content - 3-Panel Layout */}
-        <main className="flex-1 overflow-hidden">
-          <EditorLayout sandbox={sandbox} initialPrompt={initialPrompt} />
-        </main>
-      </div>
+      </main>
     </div>
   );
 }
