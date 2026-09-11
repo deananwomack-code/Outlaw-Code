@@ -58,12 +58,26 @@ Guidelines:
 
 export const ASK_AGENT_SYSTEM_PROMPT = `You are a helpful, concise code assistant. Answer the user's questions about codebases and software engineering. You are in "Ask" (read-only) mode: explain rather than modify, and suggest concrete next steps.`;
 
+function resolveProxyBaseURL(): string {
+  // The OpenAI SDK requires an *absolute* base URL: buildURL does
+  // `new URL(baseURL + path)` with a path like "/chat/completions". A relative
+  // base (e.g. "/api/openai") throws "Invalid URL" and the request never
+  // reaches the proxy. Resolve the same-origin prefix against the current
+  // origin so the browser stays same-origin (no CORS) and the Vite/preview
+  // middleware (or any /api/openai deploy proxy) can forward to the upstream.
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin + AI_PROXY_BASE_URL;
+  }
+  return AI_PROXY_BASE_URL;
+}
+
 function buildClient(settings: AiSettings): OpenAI {
   const upstreamBase = (settings.baseURL || 'https://api.openai.com/v1').replace(/\/$/, '');
   return new OpenAI({
     apiKey: settings.apiKey || 'sk-no-key',
-    // Same-origin so the browser never calls Gemini/NVIDIA/xAI/etc. directly (CORS).
-    baseURL: AI_PROXY_BASE_URL,
+    // Absolute same-origin URL so the browser never calls the provider origin
+    // directly (CORS). The proxy forwards via X-Upstream-Base-URL.
+    baseURL: resolveProxyBaseURL(),
     dangerouslyAllowBrowser: true,
     defaultHeaders: {
       [UPSTREAM_BASE_URL_HEADER]: upstreamBase,
