@@ -50,19 +50,24 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
         <DialogHeader>
           <DialogTitle>OpenAI-Compatible AI Settings</DialogTitle>
           <p className="text-xs text-muted-foreground">
-            This app uses one OpenAI-compatible client: API key + base URL + model ID. Use these same three
-            fields for OpenAI, OpenRouter, NVIDIA NIM, xAI Grok, Gemini-compatible gateways, or local servers.
-            Values are stored locally in your browser and override the defaults from <code>.env</code>.
-            Requests go through same-origin <code>/api/openai</code> (Vite proxy) so the browser never hits
-            the provider origin directly; your base URL is forwarded via <code>X-Upstream-Base-URL</code>.
+            One client, three fields: API key + base URL + model ID. Same trio for OpenAI, OpenRouter,
+            NVIDIA NIM, xAI Grok, Gemini, or local servers. Stored in this browser (overrides <code>.env</code>).
           </p>
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100/90 leading-relaxed">
+            <span className="font-medium text-amber-200">CORS tip:</span> leave Base URL as the provider
+            endpoint below. Chat already goes through same-origin <code className="text-amber-50">/api/openai</code>
+            — do not paste that path into Base URL. After merging the proxy, restart <code>npm run dev</code>.
+            If the Network tab still hits <code>generativelanguage.googleapis.com</code> (or NVIDIA/xAI)
+            from the browser, the proxy is not running.
+          </div>
           <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
-            Example base URLs: OpenAI (<code>https://api.openai.com/v1</code>), OpenRouter (
-            <code>https://openrouter.ai/api/v1</code>), NVIDIA NIM (
-            <code>https://integrate.api.nvidia.com/v1</code>), xAI Grok (
-            <code>https://api.x.ai/v1</code>), Gemini-compatible (
-            <code>https://generativelanguage.googleapis.com/v1beta/openai</code>), local (
-            <code>http://localhost:1234/v1</code>).
+            Provider base URLs (match key + model to the same one): NVIDIA{' '}
+            <code>https://integrate.api.nvidia.com/v1</code>, Grok{' '}
+            <code>https://api.x.ai/v1</code>, Gemini{' '}
+            <code>https://generativelanguage.googleapis.com/v1beta/openai/</code>, OpenAI{' '}
+            <code>https://api.openai.com/v1</code>, OpenRouter{' '}
+            <code>https://openrouter.ai/api/v1</code>, local{' '}
+            <code>http://localhost:1234/v1</code>.
           </p>
         </DialogHeader>
 
@@ -90,15 +95,18 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="base-url">Base URL</Label>
+            <Label htmlFor="base-url">Base URL (provider endpoint)</Label>
             <Input
               id="base-url"
               type="text"
-              placeholder="https://api.openai.com/v1"
+              placeholder="https://integrate.api.nvidia.com/v1"
               value={baseURL}
               onChange={(e) => setBaseURL(e.target.value)}
               className="bg-background/50 border-border/50"
             />
+            <p className="text-[10px] text-muted-foreground/70">
+              Provider origin only — the app proxies via <code>/api/openai</code> automatically.
+            </p>
           </div>
 
           <div className="space-y-2">
