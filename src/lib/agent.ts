@@ -5,12 +5,22 @@
  * pointed at any OpenAI-compatible endpoint (OpenAI, OpenRouter, Together,
  * local LLMs, etc.) configured via src/lib/settings.ts.
  *
+ * Browser traffic never hits the provider origin directly. Requests go to the
+ * same-origin Vite proxy at `/api/openai`, which forwards to the Settings
+ * base URL using the `X-Upstream-Base-URL` header (stripped before upstream).
+ *
  * Streaming uses the universally-compatible Chat Completions `stream: true`
  * contract (choices[].delta.content), which every OpenAI-compatible provider
  * supports.
  */
 import OpenAI from 'openai';
 import { loadSettings, type AiSettings } from './settings';
+
+/** Same-origin proxy prefix (see vite-ai-proxy-plugin.ts). */
+export const AI_PROXY_BASE_URL = '/api/openai';
+
+/** Header carrying the real OpenAI-compatible base URL for the proxy. */
+export const UPSTREAM_BASE_URL_HEADER = 'X-Upstream-Base-URL';
 
 export type ChatRole = 'system' | 'user' | 'assistant';
 
@@ -49,10 +59,15 @@ Guidelines:
 export const ASK_AGENT_SYSTEM_PROMPT = `You are a helpful, concise code assistant. Answer the user's questions about codebases and software engineering. You are in "Ask" (read-only) mode: explain rather than modify, and suggest concrete next steps.`;
 
 function buildClient(settings: AiSettings): OpenAI {
+  const upstreamBase = (settings.baseURL || 'https://api.openai.com/v1').replace(/\/$/, '');
   return new OpenAI({
     apiKey: settings.apiKey || 'sk-no-key',
-    baseURL: settings.baseURL || undefined,
+    // Same-origin so the browser never calls Gemini/NVIDIA/xAI/etc. directly (CORS).
+    baseURL: AI_PROXY_BASE_URL,
     dangerouslyAllowBrowser: true,
+    defaultHeaders: {
+      [UPSTREAM_BASE_URL_HEADER]: upstreamBase,
+    },
   });
 }
 

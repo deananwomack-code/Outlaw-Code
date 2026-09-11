@@ -22,7 +22,9 @@ Settings resolve with this priority (highest first):
 
 Copy `.env.example` to `.env.local` and fill in your values, or set them at runtime via the **AI Settings** button (top-right of the prompt screen and the editor header).
 
-> ⚠️ In a static frontend build, the API key is exposed to the browser. This is intentional for local/personal use. For production, proxy requests through your own backend.
+Settings remain **one API key + base URL + model**. The browser never calls the provider origin directly: the OpenAI SDK uses same-origin `/api/openai`, and Vite middleware forwards to the Settings base URL via the `X-Upstream-Base-URL` header (stripped before the upstream request). Authorization still comes from Settings. Streaming (SSE / chunked) is piped through the proxy.
+
+> ⚠️ The API key still lives in the browser (local/personal use). The proxy only solves CORS / same-origin for `npm run dev` and `npm run preview`. A static-only host (`vite build` artifacts on CDN/GitHub Pages/etc.) does **not** run this middleware — production needs Node hosting that serves with `vite preview` (or equivalent Connect middleware), or a tiny edge/worker that implements the same `/api/openai` forward. This repo has no separate deploy worker today; local/dev is the supported path.
 
 ### Sandbox / preview (stub)
 
@@ -32,7 +34,8 @@ The sandbox, live preview, and file-explorer-against-remote-FS features relied o
 
 ```bash
 npm install --legacy-peer-deps   # openai v5 has an optional peer on zod v3; project uses zod v4
-npm run dev                       # start Vite dev server (port 3000)
+npm run dev                       # start Vite dev server (port 3000) — includes AI proxy
 npx tsc --noEmit                  # typecheck
 npx vite build                    # production build
+npm run preview                   # serve build + same AI proxy middleware
 ```
