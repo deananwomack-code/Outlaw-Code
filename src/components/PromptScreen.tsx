@@ -13,9 +13,10 @@ interface PromptScreenProps {
 }
 
 const AI_MODELS = [
-  { id: 'gpt-5.2', name: 'GPT-5.2', provider: 'OpenAI' },
-  { id: 'claude-4.5-sonnet', name: 'Claude 4.5 Sonnet', provider: 'Anthropic' },
-  { id: 'gemini-3-flash', name: 'Gemini 3 Flash', provider: 'Google' },
+  { id: 'gpt-5.2', name: 'GPT-5.2', subtitle: 'Model ID preset: gpt-5.2' },
+  { id: 'grok-2-1212', name: 'Grok 2', subtitle: 'Model ID preset: grok-2-1212' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', subtitle: 'Model ID preset: gemini-2.5-flash' },
+  { id: 'meta/llama-3.1-70b-instruct', name: 'NIM Llama 3.1 70B', subtitle: 'Model ID preset: meta/llama-3.1-70b-instruct' },
 ];
 
 const MODES = [
@@ -63,7 +64,7 @@ const SUGGESTED_PROMPTS = [
 
 export function PromptScreen({ onStart }: PromptScreenProps) {
   const [input, setInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState(AI_MODELS[2]); // Default to Gemini 3 Flash
+  const [selectedModel, setSelectedModel] = useState(AI_MODELS[2]); // Default to Gemini 2.5 Flash
   const [selectedMode, setSelectedMode] = useState(MODES[0]); // Default to Agent
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -136,7 +137,7 @@ export function PromptScreen({ onStart }: PromptScreenProps) {
                       >
                         <div className="flex flex-col items-start gap-0.5">
                           <span className="font-medium text-foreground">{model.name}</span>
-                          <span className="text-[10px] text-muted-foreground/60">{model.provider}</span>
+                          <span className="text-[10px] text-muted-foreground/60">{model.subtitle}</span>
                         </div>
                         {selectedModel.id === model.id && (
                           <Check size={12} className="text-foreground" />
