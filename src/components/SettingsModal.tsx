@@ -53,6 +53,8 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
             This app uses one OpenAI-compatible client: API key + base URL + model ID. Use these same three
             fields for OpenAI, OpenRouter, NVIDIA NIM, xAI Grok, Gemini-compatible gateways, or local servers.
             Values are stored locally in your browser and override the defaults from <code>.env</code>.
+            Requests go through same-origin <code>/api/openai</code> (Vite proxy) so the browser never hits
+            the provider origin directly; your base URL is forwarded via <code>X-Upstream-Base-URL</code>.
           </p>
           <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
             Example base URLs: OpenAI (<code>https://api.openai.com/v1</code>), OpenRouter (
