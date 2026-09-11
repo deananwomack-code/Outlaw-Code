@@ -10,8 +10,11 @@ import {
   Plus,
   LogOut,
   FolderPlus,
+  FileUp,
+  FolderUp,
   Sparkles
 } from 'lucide-react';
+import { requestImportFiles, requestImportFolder } from './lib/import-files';
 import { Button } from './components/ui/button';
 import {
   DropdownMenu,
@@ -151,6 +154,15 @@ export default function App() {
                 <DropdownMenuItem onClick={() => setShowHistory(true)} className="gap-2 cursor-pointer focus:bg-zinc-800">
                   <FolderPlus size={13} />
                   Open Project History...
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border/30" />
+                <DropdownMenuItem onClick={() => requestImportFiles()} className="gap-2 cursor-pointer focus:bg-zinc-800">
+                  <FileUp size={13} />
+                  Import File(s)...
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => requestImportFolder()} className="gap-2 cursor-pointer focus:bg-zinc-800">
+                  <FolderUp size={13} />
+                  Import Folder...
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-border/30" />
                 <DropdownMenuItem onClick={handleLogout} className="gap-2 cursor-pointer text-red-400 focus:bg-zinc-800">

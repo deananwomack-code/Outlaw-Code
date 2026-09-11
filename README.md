@@ -1,4 +1,4 @@
-# Outlaw-code (my-code-studio)
+# Outlaw-code 
 
 A Cursor-style in-browser code editor: file explorer + Monaco editor + AI chat + preview panel.
 

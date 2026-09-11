@@ -3,9 +3,10 @@ import {
   Save, Sparkles, Terminal as TermIcon,
   ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen,
   PanelLeftClose, PanelLeftOpen, Search, RefreshCw,
-  GitBranch, Check, FolderOpen
+  GitBranch, Check, FolderOpen, FileUp, FolderUp
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { requestImportFiles, requestImportFolder, IMPORT_FILES_EVENT, IMPORT_FOLDER_EVENT } from '../lib/import-files';
 import { ActivityBar, type ActivityView } from './ActivityBar';
 import { FileExplorer } from './FileExplorer';
 import { EditorTabs, type TabItem } from './EditorTabs';
@@ -95,6 +96,26 @@ export function EditorLayout({ sandbox, initialPrompt, onOpenSettings }: EditorL
     setSelectedText('');
   }, [sandbox?.id]);
 
+  // Import entries from the top-level File menu / empty state: make sure the
+  // Explorer (which owns the file/folder pickers) is visible, then forward
+  // the event so its listener can open the picker.
+  useEffect(() => {
+    const forward = (type: string) => (e: Event) => {
+      if ((e as CustomEvent).detail?.forwarded) return;
+      setActiveActivityView('explorer');
+      setSidebarOpen(true);
+      setTimeout(() => window.dispatchEvent(new CustomEvent(type, { detail: { forwarded: true } })), 50);
+    };
+    const forwardFiles = forward(IMPORT_FILES_EVENT);
+    const forwardFolder = forward(IMPORT_FOLDER_EVENT);
+    window.addEventListener(IMPORT_FILES_EVENT, forwardFiles);
+    window.addEventListener(IMPORT_FOLDER_EVENT, forwardFolder);
+    return () => {
+      window.removeEventListener(IMPORT_FILES_EVENT, forwardFiles);
+      window.removeEventListener(IMPORT_FOLDER_EVENT, forwardFolder);
+    };
+  }, []);
+
   // Load a file from sandbox into tabs
   const loadFile = useCallback(async (path: string) => {
     const sb = sandboxRef.current;
@@ -172,6 +193,14 @@ export function EditorLayout({ sandbox, initialPrompt, onOpenSettings }: EditorL
       return next;
     });
   };
+
+  // Auto-open the first file after an import completes.
+  const handleImportComplete = useCallback((paths: string[]) => {
+    if (paths.length > 0) {
+      setBuildLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] Imported ${paths.length} file(s)`]);
+      void loadFile(paths[0]);
+    }
+  }, [loadFile]);
 
   // Handle Editor Content Change
   const handleEditorChange = (val: string | undefined) => {
@@ -387,6 +416,7 @@ export function EditorLayout({ sandbox, initialPrompt, onOpenSettings }: EditorL
                 sandbox={sandbox}
                 selectedFile={activeFilePath}
                 onFileSelect={(path) => loadFile(path)}
+                onImportComplete={handleImportComplete}
               />
             )}
 
@@ -579,6 +609,28 @@ export function EditorLayout({ sandbox, initialPrompt, onOpenSettings }: EditorL
               <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground/40 gap-3">
                 <FolderOpen size={36} className="opacity-30" />
                 <p className="text-xs">Select a file from the explorer to begin editing</p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px] gap-1.5"
+                    onClick={() => requestImportFiles()}
+                    title="Import file(s) into the workspace"
+                  >
+                    <FileUp size={12} />
+                    Import files...
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px] gap-1.5"
+                    onClick={() => requestImportFolder()}
+                    title="Import a folder into the workspace"
+                  >
+                    <FolderUp size={12} />
+                    Import folder...
+                  </Button>
+                </div>
               </div>
             )}
           </div>
