@@ -48,10 +48,19 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md bg-[#0d0d0d] border-[#2d2d2d] text-foreground">
         <DialogHeader>
-          <DialogTitle>AI Settings</DialogTitle>
+          <DialogTitle>OpenAI-Compatible AI Settings</DialogTitle>
           <p className="text-xs text-muted-foreground">
-            Configure any OpenAI-compatible endpoint (OpenAI, OpenRouter, Together, local LLMs, …).
+            This app uses one OpenAI-compatible client: API key + base URL + model ID. Use these same three
+            fields for OpenAI, OpenRouter, NVIDIA NIM, xAI Grok, Gemini-compatible gateways, or local servers.
             Values are stored locally in your browser and override the defaults from <code>.env</code>.
+          </p>
+          <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
+            Example base URLs: OpenAI (<code>https://api.openai.com/v1</code>), OpenRouter (
+            <code>https://openrouter.ai/api/v1</code>), NVIDIA NIM (
+            <code>https://integrate.api.nvidia.com/v1</code>), xAI Grok (
+            <code>https://api.x.ai/v1</code>), Gemini-compatible (
+            <code>https://generativelanguage.googleapis.com/v1beta/openai</code>), local (
+            <code>http://localhost:1234/v1</code>).
           </p>
         </DialogHeader>
 
