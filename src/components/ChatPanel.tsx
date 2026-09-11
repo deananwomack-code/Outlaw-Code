@@ -24,7 +24,8 @@ import {
   ASK_AGENT_SYSTEM_PROMPT,
   type ChatMessage,
 } from '../lib/agent';
-import { loadSettings, saveSettings, isConfigured } from '../lib/settings';
+import { AI_MODELS, resolveModel } from '../lib/models';
+import { loadSettings, saveModel, isConfigured } from '../lib/settings';
 
 interface ChatPanelProps {
   sandbox: any | null;
@@ -35,18 +36,6 @@ interface ChatPanelProps {
   selectedCode?: string | null;
   onApplyCode?: (code: string) => void;
 }
-
-const AI_MODELS = [
-  { id: 'Gemini 3.6 flash', name: 'Gemini 3.6 Flash', subtitle: 'Google · model-id preset' },
-  { id: 'Gemini 3.7 flash', name: 'Gemini 3.7 Flash', subtitle: 'Google · model-id preset' },
-  { id: 'Gemini 3.8 Flash', name: 'Gemini 3.8 Flash', subtitle: 'Google · model-id preset' },
-  { id: 'deepseek-ai/deepseek-v4-flash-0731', name: 'DeepSeek V4 Flash', subtitle: 'NVIDIA · model-id preset' },
-  { id: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', name: 'Nemotron Ultra 253B', subtitle: 'NVIDIA · model-id preset' },
-  { id: 'moonshotai/kimi-k3', name: 'Kimi K3', subtitle: 'NVIDIA · model-id preset' },
-  { id: 'grok-4.2', name: 'Grok 4.2', subtitle: 'xAI · model-id preset' },
-  { id: 'grok-4.5', name: 'Grok 4.5', subtitle: 'xAI · model-id preset' },
-  { id: 'grok-4.6', name: 'Grok 4.6', subtitle: 'xAI · model-id preset' },
-];
 
 const AGENT_MODES = [
   { id: 'agent', name: 'Agent', icon: InfinityIcon },
@@ -95,12 +84,13 @@ export function ChatPanel({
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [trustDelayPassed, setTrustDelayPassed] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]);
+  const [selectedModel, setSelectedModel] = useState(() => resolveModel(loadSettings().model));
   const [agentMode, setAgentMode] = useState(AGENT_MODES[0]);
   const chooseModel = (model: typeof AI_MODELS[number]) => {
     setSelectedModel(model);
-    saveSettings({ ...loadSettings(), model: model.id });
+    saveModel(model.id);
   };
+  const syncModelFromSettings = () => setSelectedModel(resolveModel(loadSettings().model));
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -535,7 +525,7 @@ export function ChatPanel({
   if (isEmbedded) {
     return (
       <div className="h-full flex flex-col bg-secondary/30 overflow-hidden" ref={containerRef}>
-        <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+        <SettingsModal isOpen={showSettings} onClose={() => { setShowSettings(false); syncModelFromSettings(); }} />
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
           {messages.length === 0 ? <EmptyState /> : messages.map(renderMessage)}
           {isLoading && (
@@ -555,7 +545,7 @@ export function ChatPanel({
   if (!hasMessages) {
     return (
       <div className="h-full flex bg-background" ref={containerRef}>
-        <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+        <SettingsModal isOpen={showSettings} onClose={() => { setShowSettings(false); syncModelFromSettings(); }} />
         <div className="flex-1 flex flex-col items-center justify-center text-center px-4 relative overflow-hidden">
           <div className="mb-12 flex flex-col items-center">
             <div className="w-20 h-20 mb-8 opacity-20">
@@ -687,7 +677,7 @@ export function ChatPanel({
   // After first message: Left sidebar (chat) + Right panel (preview)
   return (
     <div className="h-full flex bg-background" ref={containerRef}>
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModal isOpen={showSettings} onClose={() => { setShowSettings(false); syncModelFromSettings(); }} />
       <div className="w-[320px] border-r border-border flex flex-col bg-secondary/30 shrink-0" ref={sidebarRef}>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
           {messages.map(renderMessage)}
