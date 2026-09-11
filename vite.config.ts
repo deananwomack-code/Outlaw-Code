@@ -4,6 +4,7 @@ import path from 'path';
 import { aiProxyPlugin } from './vite-ai-proxy-plugin';
 
 export default defineConfig({
+  base: './',
   plugins: [react(), aiProxyPlugin()],
   resolve: {
     alias: {

@@ -39,3 +39,14 @@ npx tsc --noEmit                  # typecheck
 npx vite build                    # production build
 npm run preview                   # serve build + same AI proxy middleware
 ```
+
+## Electron desktop app
+
+Electron wraps the Vite build in a Windows desktop shell. The main Electron file opens either the local Vite dev server during development or `dist/index.html` after a production build.
+
+```bash
+npm run electron:dev               # start Vite, wait for port 3000, then open Electron
+npm run electron:build             # build Vite and package Windows x64 app into release/win-unpacked
+```
+
+After `npm run electron:build`, open `release/win-unpacked/Outlaw Code.exe` to run the packaged app.
