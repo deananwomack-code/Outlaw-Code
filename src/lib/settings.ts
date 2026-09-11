@@ -16,6 +16,8 @@ export interface AiSettings {
   model: string;
 }
 
+import { normalizeModelId } from './models';
+
 const STORAGE_KEY = 'cursor_ai_settings';
 
 const ENV = import.meta.env as unknown as Record<string, string | undefined>;
@@ -43,20 +45,21 @@ export function loadSettings(): AiSettings {
   return {
     apiKey: overrides.apiKey?.trim() || DEFAULT_SETTINGS.apiKey,
     baseURL: overrides.baseURL?.trim() || DEFAULT_SETTINGS.baseURL,
-    model: overrides.model?.trim() || DEFAULT_SETTINGS.model,
+    model: normalizeModelId(overrides.model?.trim() || DEFAULT_SETTINGS.model),
   };
 }
 
 export function saveModel(model: string): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadStoredOverrides(), model: model.trim() }));
+  const normalized = normalizeModelId(model);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadStoredOverrides(), model: normalized }));
 }
 
 export function saveSettings(settings: AiSettings): AiSettings {
   const normalized: AiSettings = {
     apiKey: settings.apiKey.trim(),
     baseURL: settings.baseURL.trim(),
-    model: settings.model.trim(),
+    model: normalizeModelId(settings.model),
   };
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));

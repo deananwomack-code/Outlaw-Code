@@ -86,8 +86,14 @@ async function pipeUpstream(
   }
 
   const abort = new AbortController();
-  const onClientClose = () => abort.abort();
-  req.on('close', onClientClose);
+  // NOTE: listen on the *response* close, not the request close.
+  // `req` emits 'close' as soon as its (POST) body is fully consumed, which
+  // would abort the upstream fetch before it starts and return `200` with an
+  // empty body. `res` 'close' with !writableEnded means the client went away.
+  const onClientClose = () => {
+    if (!res.writableEnded) abort.abort();
+  };
+  res.on('close', onClientClose);
 
   const body = await readRequestBody(req);
   const headers = pickRequestHeaders(req);
@@ -101,9 +107,9 @@ async function pipeUpstream(
       signal: abort.signal,
     });
   } catch (err) {
-    req.off('close', onClientClose);
+    res.off('close', onClientClose);
     if (abort.signal.aborted) {
-      if (!res.headersSent) res.end();
+      if (!res.writableEnded) res.end();
       return;
     }
     const message = err instanceof Error ? err.message : String(err);
@@ -138,7 +144,7 @@ async function pipeUpstream(
   });
 
   if (!upstreamRes.body) {
-    req.off('close', onClientClose);
+    res.off('close', onClientClose);
     res.end();
     return;
   }
@@ -177,7 +183,7 @@ async function pipeUpstream(
       res.destroy(err instanceof Error ? err : undefined);
     }
   } finally {
-    req.off('close', onClientClose);
+    res.off('close', onClientClose);
   }
 }
 
