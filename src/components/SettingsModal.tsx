@@ -46,7 +46,7 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md bg-[#0d0d0d] border-[#2d2d2d] text-foreground">
+      <DialogContent className="max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto bg-[#0d0d0d] border-[#2d2d2d] text-foreground">
         <DialogHeader>
           <DialogTitle>OpenAI-Compatible AI Settings</DialogTitle>
           <p className="text-xs text-muted-foreground">
@@ -105,7 +105,9 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
               className="bg-background/50 border-border/50"
             />
             <p className="text-[10px] text-muted-foreground/70">
-              Provider origin only — the app proxies via <code>/api/openai</code> automatically.
+              Enter the provider's full base URL, including any required path such as <code>/v1</code>. When
+              running via Vite (<code>npm run dev</code> / <code>npm run preview</code>), chat is routed through
+              the same-origin <code>/api/openai</code> proxy. Static hosting must serve its own <code>/api/openai</code> proxy.
             </p>
           </div>
 
