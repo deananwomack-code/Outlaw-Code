@@ -26,20 +26,30 @@ export const DEFAULT_SETTINGS: AiSettings = {
   model: ENV.VITE_OPENAI_MODEL ?? 'gpt-4o-mini',
 };
 
-export function loadSettings(): AiSettings {
-  if (typeof window === 'undefined') return { ...DEFAULT_SETTINGS };
+function loadStoredOverrides(): Partial<AiSettings> {
+  if (typeof window === 'undefined') return {};
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS };
+    if (!raw) return {};
     const parsed = JSON.parse(raw) as Partial<AiSettings>;
-    return {
-      apiKey: parsed.apiKey?.trim() || DEFAULT_SETTINGS.apiKey,
-      baseURL: parsed.baseURL?.trim() || DEFAULT_SETTINGS.baseURL,
-      model: parsed.model?.trim() || DEFAULT_SETTINGS.model,
-    };
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
-    return { ...DEFAULT_SETTINGS };
+    return {};
   }
+}
+
+export function loadSettings(): AiSettings {
+  const overrides = loadStoredOverrides();
+  return {
+    apiKey: overrides.apiKey?.trim() || DEFAULT_SETTINGS.apiKey,
+    baseURL: overrides.baseURL?.trim() || DEFAULT_SETTINGS.baseURL,
+    model: overrides.model?.trim() || DEFAULT_SETTINGS.model,
+  };
+}
+
+export function saveModel(model: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadStoredOverrides(), model: model.trim() }));
 }
 
 export function saveSettings(settings: AiSettings): AiSettings {

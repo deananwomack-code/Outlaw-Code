@@ -24,7 +24,8 @@ import {
   ASK_AGENT_SYSTEM_PROMPT,
   type ChatMessage,
 } from '../lib/agent';
-import { loadSettings, isConfigured } from '../lib/settings';
+import { AI_MODELS, resolveModel } from '../lib/models';
+import { loadSettings, saveModel, isConfigured } from '../lib/settings';
 
 interface ChatPanelProps {
   sandbox: any | null;
@@ -35,13 +36,6 @@ interface ChatPanelProps {
   selectedCode?: string | null;
   onApplyCode?: (code: string) => void;
 }
-
-const AI_MODELS = [
-  { id: 'gpt-5.2', name: 'GPT-5.2', subtitle: 'Model ID preset: gpt-5.2' },
-  { id: 'grok-2-1212', name: 'Grok 2', subtitle: 'Model ID preset: grok-2-1212' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', subtitle: 'Model ID preset: gemini-2.5-flash' },
-  { id: 'meta/llama-3.1-70b-instruct', name: 'NIM Llama 3.1 70B', subtitle: 'Model ID preset: meta/llama-3.1-70b-instruct' },
-];
 
 const AGENT_MODES = [
   { id: 'agent', name: 'Agent', icon: InfinityIcon },
@@ -90,8 +84,13 @@ export function ChatPanel({
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [trustDelayPassed, setTrustDelayPassed] = useState(false);
   const [hasAnimated, setHasAnimated] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]);
+  const [selectedModel, setSelectedModel] = useState(() => resolveModel(loadSettings().model));
   const [agentMode, setAgentMode] = useState(AGENT_MODES[0]);
+  const chooseModel = (model: typeof AI_MODELS[number]) => {
+    setSelectedModel(model);
+    saveModel(model.id);
+  };
+  const syncModelFromSettings = () => setSelectedModel(resolveModel(loadSettings().model));
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -433,7 +432,7 @@ export function ChatPanel({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="bg-[#1a1a1a] border-border/50 text-xs min-w-[140px] z-50">
                   {AI_MODELS.map((model) => (
-                    <DropdownMenuItem key={model.id} onClick={() => setSelectedModel(model)} className="flex items-center justify-between gap-2 cursor-pointer focus:bg-[#252525] py-2 px-3">
+                    <DropdownMenuItem key={model.id} onClick={() => chooseModel(model)} className="flex items-center justify-between gap-2 cursor-pointer focus:bg-[#252525] py-2 px-3">
                       <div className="flex flex-col items-start gap-0.5">
                         <span className="font-medium text-foreground">{model.name}</span>
                         <span className="text-[10px] text-muted-foreground/60">{model.subtitle}</span>
@@ -526,7 +525,7 @@ export function ChatPanel({
   if (isEmbedded) {
     return (
       <div className="h-full flex flex-col bg-secondary/30 overflow-hidden" ref={containerRef}>
-        <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+        <SettingsModal isOpen={showSettings} onClose={() => { setShowSettings(false); syncModelFromSettings(); }} />
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
           {messages.length === 0 ? <EmptyState /> : messages.map(renderMessage)}
           {isLoading && (
@@ -546,7 +545,7 @@ export function ChatPanel({
   if (!hasMessages) {
     return (
       <div className="h-full flex bg-background" ref={containerRef}>
-        <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+        <SettingsModal isOpen={showSettings} onClose={() => { setShowSettings(false); syncModelFromSettings(); }} />
         <div className="flex-1 flex flex-col items-center justify-center text-center px-4 relative overflow-hidden">
           <div className="mb-12 flex flex-col items-center">
             <div className="w-20 h-20 mb-8 opacity-20">
@@ -639,7 +638,7 @@ export function ChatPanel({
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="bg-[#1a1a1a] border-border/50 text-xs min-w-[140px]">
                         {AI_MODELS.map((model) => (
-                          <DropdownMenuItem key={model.id} onClick={() => setSelectedModel(model)} className="flex items-center justify-between gap-2 cursor-pointer focus:bg-[#252525] py-2 px-3">
+                          <DropdownMenuItem key={model.id} onClick={() => chooseModel(model)} className="flex items-center justify-between gap-2 cursor-pointer focus:bg-[#252525] py-2 px-3">
                             <div className="flex flex-col items-start gap-0.5">
                               <span className="font-medium text-foreground">{model.name}</span>
                               <span className="text-[10px] text-muted-foreground/60">{model.subtitle}</span>
@@ -678,7 +677,7 @@ export function ChatPanel({
   // After first message: Left sidebar (chat) + Right panel (preview)
   return (
     <div className="h-full flex bg-background" ref={containerRef}>
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModal isOpen={showSettings} onClose={() => { setShowSettings(false); syncModelFromSettings(); }} />
       <div className="w-[320px] border-r border-border flex flex-col bg-secondary/30 shrink-0" ref={sidebarRef}>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
           {messages.map(renderMessage)}

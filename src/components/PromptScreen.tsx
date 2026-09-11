@@ -7,17 +7,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { AI_MODELS } from '../lib/models';
 
 interface PromptScreenProps {
   onStart: (prompt: string) => void;
 }
-
-const AI_MODELS = [
-  { id: 'gpt-5.2', name: 'GPT-5.2', subtitle: 'Model ID preset: gpt-5.2' },
-  { id: 'grok-2-1212', name: 'Grok 2', subtitle: 'Model ID preset: grok-2-1212' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', subtitle: 'Model ID preset: gemini-2.5-flash' },
-  { id: 'meta/llama-3.1-70b-instruct', name: 'NIM Llama 3.1 70B', subtitle: 'Model ID preset: meta/llama-3.1-70b-instruct' },
-];
 
 const MODES = [
   { id: 'agent', name: 'Agent', icon: Infinity },
@@ -64,7 +58,7 @@ const SUGGESTED_PROMPTS = [
 
 export function PromptScreen({ onStart }: PromptScreenProps) {
   const [input, setInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState(AI_MODELS[2]); // Default to Gemini 2.5 Flash
+  const [selectedModel, setSelectedModel] = useState(AI_MODELS[0]); // Default to Gemini 3.6 Flash
   const [selectedMode, setSelectedMode] = useState(MODES[0]); // Default to Agent
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -99,7 +93,7 @@ export function PromptScreen({ onStart }: PromptScreenProps) {
               <div className="flex items-center gap-1 bg-[#252525]/30 border border-border/30 rounded-lg px-2 py-1.5 transition-colors">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-1.5 hover:text-foreground/80 text-[11px] text-muted-foreground transition-colors px-1 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0">
+                    <button className="flex items-center gap-1.5 hover:text-foreground/80 text-[11px] text-muted-foreground transition-colors px-1 focus:outline-none focus:ring-0 focus-visible:ring-offset-0">
                       <ModeIcon size={12} className="text-muted-foreground/60" />
                       <span>{selectedMode.name}</span>
                       <ChevronDown size={10} />
