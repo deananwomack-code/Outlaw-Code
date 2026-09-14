@@ -9,3 +9,11 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  readonly outlawCode?: {
+    readonly platform: string;
+    readonly aiProxyBaseURL?: string;
+    readonly aiProxyToken?: string;
+  };
+}

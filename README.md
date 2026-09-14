@@ -22,9 +22,9 @@ Settings resolve with this priority (highest first):
 
 Copy `.env.example` to `.env.local` and fill in your values, or set them at runtime via the **AI Settings** button (top-right of the prompt screen and the editor header).
 
-Settings remain **one API key + base URL + model**. The browser never calls the provider origin directly: the OpenAI SDK uses same-origin `/api/openai`, and Vite middleware forwards to the Settings base URL via the `X-Upstream-Base-URL` header (stripped before the upstream request). Authorization still comes from Settings. Streaming (SSE / chunked) is piped through the proxy.
+Settings remain **one API key + base URL + model**. The browser never calls the provider origin directly: the OpenAI SDK uses a local `/api/openai` proxy endpoint, and that proxy forwards to the Settings base URL via the `X-Upstream-Base-URL` header (stripped before the upstream request). Authorization still comes from Settings. Streaming (SSE / chunked) is piped through the proxy.
 
-> ⚠️ The API key still lives in the browser (local/personal use). The proxy only solves CORS / same-origin for `npm run dev` and `npm run preview`. A static-only host (`vite build` artifacts on CDN/GitHub Pages/etc.) does **not** run this middleware — production needs Node hosting that serves with `vite preview` (or equivalent Connect middleware), or a tiny edge/worker that implements the same `/api/openai` forward. This repo has no separate deploy worker today; local/dev is the supported path.
+> ⚠️ The API key still lives in the browser (local/personal use). The proxy solves CORS / same-origin for `npm run dev`, `npm run preview`, and the packaged Electron desktop app. A static-only host (`vite build` artifacts on CDN/GitHub Pages/etc.) does **not** run this middleware — production web hosting needs Node hosting that serves with `vite preview` (or equivalent Connect middleware), or a tiny edge/worker that implements the same `/api/openai` forward.
 
 ### Sandbox / preview (stub)
 
@@ -42,11 +42,12 @@ npm run preview                   # serve build + same AI proxy middleware
 
 ## Electron desktop app
 
-Electron wraps the Vite build in a Windows desktop shell. The main Electron file opens either the local Vite dev server during development or `dist/index.html` after a production build.
+Electron wraps the Vite build in a Windows desktop shell. The main Electron file opens either the local Vite dev server during development or `dist/index.html` after a production build. The packaged app starts a local `127.0.0.1` AI proxy so chat still routes through `/api/openai` without Vite running.
 
 ```bash
 npm run electron:dev               # start Vite, wait for port 3000, then open Electron
-npm run electron:build             # build Vite and package Windows x64 app into release/win-unpacked
+npm run electron:build             # build Vite, create the installer, and keep win-unpacked
+npm run electron:build:dir         # optional faster unpacked-only build for debugging
 ```
 
-After `npm run electron:build`, open `release/win-unpacked/Outlaw Code.exe` to run the packaged app.
+After `npm run electron:build`, use `release/Outlaw Code Setup <version>.exe` for installation. The installer creates the desktop and Start Menu shortcuts with the Outlaw Code icon. For debugging without installing, open `release/win-unpacked/Outlaw Code.exe`.

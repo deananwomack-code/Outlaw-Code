@@ -55,10 +55,10 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
           </p>
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100/90 leading-relaxed">
             <span className="font-medium text-amber-200">CORS tip:</span> leave Base URL as the provider
-            endpoint below. Chat already goes through same-origin <code className="text-amber-50">/api/openai</code>
-            — do not paste that path into Base URL. After merging the proxy, restart <code>npm run dev</code>.
-            If the Network tab still hits <code>generativelanguage.googleapis.com</code> (or NVIDIA/xAI)
-            from the browser, the proxy is not running.
+            endpoint below. Chat already goes through the local <code className="text-amber-50">/api/openai</code> proxy
+            — do not paste that path into Base URL. Vite dev/preview run the proxy on port 3000, and the
+            packaged Electron app starts its own local desktop proxy. If the Network tab still hits{' '}
+            <code>generativelanguage.googleapis.com</code> (or NVIDIA/xAI) from the browser, the proxy is not running.
           </div>
           <p className="text-[11px] text-muted-foreground/80 leading-relaxed">
             Provider base URLs (match key + model to the same one): NVIDIA{' '}
@@ -107,7 +107,8 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
             <p className="text-[10px] text-muted-foreground/70">
               Enter the provider's full base URL, including any required path such as <code>/v1</code>. When
               running via Vite (<code>npm run dev</code> / <code>npm run preview</code>), chat is routed through
-              the same-origin <code>/api/openai</code> proxy. Static hosting must serve its own <code>/api/openai</code> proxy.
+              the same-origin <code>/api/openai</code> proxy. The Windows desktop build runs the same forwarder locally.
+              Static hosting must serve its own <code>/api/openai</code> proxy.
             </p>
           </div>
 

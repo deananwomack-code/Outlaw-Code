@@ -22,6 +22,8 @@ export const AI_PROXY_BASE_URL = '/api/openai';
 /** Header carrying the real OpenAI-compatible base URL for the proxy. */
 export const UPSTREAM_BASE_URL_HEADER = 'X-Upstream-Base-URL';
 
+export const ELECTRON_PROXY_TOKEN_HEADER = 'X-Outlaw-Code-Proxy-Token';
+
 export type ChatRole = 'system' | 'user' | 'assistant';
 
 export interface ChatMessage {
@@ -59,13 +61,18 @@ Guidelines:
 export const ASK_AGENT_SYSTEM_PROMPT = `You are a helpful, concise code assistant. Answer the user's questions about codebases and software engineering. You are in "Ask" (read-only) mode: explain rather than modify, and suggest concrete next steps.`;
 
 function resolveProxyBaseURL(): string {
+  if (typeof window === 'undefined') return AI_PROXY_BASE_URL;
+
+  const electronProxyBaseURL = window.outlawCode?.aiProxyBaseURL?.replace(/\/$/, '');
+  if (electronProxyBaseURL) return electronProxyBaseURL;
+
   // The OpenAI SDK requires an *absolute* base URL: buildURL does
   // `new URL(baseURL + path)` with a path like "/chat/completions". A relative
   // base (e.g. "/api/openai") throws "Invalid URL" and the request never
   // reaches the proxy. Resolve the same-origin prefix against the current
   // origin so the browser stays same-origin (no CORS) and the Vite/preview
   // middleware (or any /api/openai deploy proxy) can forward to the upstream.
-  if (typeof window !== 'undefined' && window.location?.origin) {
+  if (window.location?.origin && window.location.origin !== 'null' && window.location.origin !== 'file://') {
     return window.location.origin + AI_PROXY_BASE_URL;
   }
   return AI_PROXY_BASE_URL;
@@ -73,6 +80,7 @@ function resolveProxyBaseURL(): string {
 
 function buildClient(settings: AiSettings): OpenAI {
   const upstreamBase = (settings.baseURL || 'https://api.openai.com/v1').replace(/\/$/, '');
+  const electronProxyToken = typeof window !== 'undefined' ? window.outlawCode?.aiProxyToken : undefined;
   return new OpenAI({
     apiKey: settings.apiKey || 'sk-no-key',
     // Absolute same-origin URL so the browser never calls the provider origin
@@ -81,6 +89,7 @@ function buildClient(settings: AiSettings): OpenAI {
     dangerouslyAllowBrowser: true,
     defaultHeaders: {
       [UPSTREAM_BASE_URL_HEADER]: upstreamBase,
+      ...(electronProxyToken ? { [ELECTRON_PROXY_TOKEN_HEADER]: electronProxyToken } : {}),
     },
   });
 }

@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "vite build",
     "electron:dev": "node electron/start-dev.cjs",
-    "electron:build": "npm run build && electron-builder --win --x64 --dir",
+    "electron:build": "npm run build && electron-builder --win --x64",
+    "electron:build:dir": "npm run build && electron-builder --win --x64 --dir",
     "lint": "npm run lint:types && npm run lint:js && npm run lint:css && npm run check:css-vars && npm run check:css-classes",
     "preview": "vite preview",
     "lint:css": "stylelint \"src/**/*.css\" --fix --quiet",
@@ -108,13 +109,22 @@
     },
     "files": [
       "dist/**/*",
+      "build/icon.ico",
       "electron/main.cjs",
       "electron/preload.cjs",
       "package.json",
       "!node_modules/**/*"
     ],
     "win": {
+      "icon": "build/icon.ico",
+      "artifactName": "${productName} Setup ${version}.${ext}",
       "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
         {
           "target": "dir",
           "arch": [
@@ -122,6 +132,14 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Outlaw Code"
     }
   }
 }
